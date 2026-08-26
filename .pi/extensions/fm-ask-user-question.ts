@@ -28,7 +28,6 @@ try {
   activeState = configuredState;
 }
 const adapter = process.env.FM_ASK_USER_QUESTION_ADAPTER || `${root}/bin/fm-ask-user-question.sh`;
-const adapterDeliveryUnknown = 4;
 
 const OptionSchema = Type.Object({
   id: Type.String({ description: "Stable answer identifier" }),
@@ -153,7 +152,7 @@ function runAdapter(command: "validate" | "deliver", params: QuestionParams, ans
   return spawnSync(adapter, args, {
     encoding: "utf8",
     env: { ...process.env, FM_HOME: activeHome, FM_STATE_OVERRIDE: activeState },
-    timeout: 10_000,
+    ...(command === "validate" ? { timeout: 10_000 } : {}),
   });
 }
 
@@ -392,7 +391,7 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before delivery.");
 
         const delivery = runAdapter("deliver", params, deliveryText(modal.answers));
-        if (delivery.status !== 0 && delivery.status !== adapterDeliveryUnknown) {
+        if (delivery.status === 3) {
           return cancelled(
             params,
             "binding-mismatch",
@@ -401,7 +400,7 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
             modal.answers,
           );
         }
-        if (delivery.status === adapterDeliveryUnknown) {
+        if (delivery.status !== 0) {
           return cancelled(
             params,
             "delivery-unknown",

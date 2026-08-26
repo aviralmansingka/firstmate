@@ -96,6 +96,18 @@ JS
     *) fail "owner failure diagnostic was lost: $out" ;;
   esac
 
+  cp "$fixture/send.log" "$fixture/send-before-owner-missing.log"
+  chmod -x "$fixture/root/bin/fm-send.sh"
+  out=$(FM_HOME="$fixture/home" FM_SEND_LOG="$fixture/send.log" \
+    "$fixture/root/bin/fm-ask-user-question.sh" deliver \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" \
+      --answer blocked 2>&1)
+  status=$?
+  chmod +x "$fixture/root/bin/fm-send.sh"
+  [ "$status" -eq 3 ] || fail "missing delivery owner was not a preflight failure: $status $out"
+  cmp -s "$fixture/send-before-owner-missing.log" "$fixture/send.log" \
+    || fail "missing delivery owner changed the send log"
+
   cp "$fixture/send.log" "$fixture/send-before-marker.log"
   ln -s "$fixture/missing-secondmate-marker" "$fixture/home/.fm-secondmate-home"
   if FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
@@ -335,6 +347,12 @@ if [ "$command" = deliver ]; then
     } >&2
     exit 4
   fi
+  if [ "$key" = owner-signal ]; then
+    kill -TERM "$$"
+  fi
+  if [ "$key" = slow-owner ]; then
+    sleep 11
+  fi
 fi
 exit 0
 SH
@@ -520,6 +538,20 @@ if (!renderedUnknown.includes("fm-send: answer queued but decision close failed"
     !renderedUnknown.includes("Do not resend automatically.") ||
     renderedUnknownLines.some((line) => /[\u0000-\u001f\u007f-\u009f]/.test(line))) {
   throw new Error(`delivery-unknown evidence was hidden or unsafe: ${JSON.stringify(renderedUnknownLines)}`);
+}
+
+before = deliveryCount();
+result = await execute({ ...base, decisionKey: "owner-signal" });
+if (result.details.reason !== "delivery-unknown" || result.details.delivered !== "unknown" ||
+    result.details.answers[0]?.id !== "safe" || deliveryCount() !== before + 1) {
+  throw new Error(`indeterminate owner result was misclassified: ${JSON.stringify(result.details)}`);
+}
+
+before = deliveryCount();
+result = await execute({ ...base, decisionKey: "slow-owner" });
+if (result.details.status !== "answered" || result.details.delivered !== true ||
+    deliveryCount() !== before + 1) {
+  throw new Error(`bounded owner delivery was killed externally: ${JSON.stringify(result.details)}`);
 }
 
 behavior = "throw";

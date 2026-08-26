@@ -153,6 +153,7 @@ case "$command" in
     [ -n "$answer" ] || die '--answer is required'
     require_primary_lock
     validate_generation
+    [ -x "$ROOT/bin/fm-send.sh" ] || die 'delivery owner is missing or not executable'
     if FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
       "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"; then
       :
