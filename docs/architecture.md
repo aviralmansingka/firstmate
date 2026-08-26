@@ -61,7 +61,8 @@ Every call supplies the owning Firstmate home, task ID, decision key, and source
 The `bin/fm-ask-user-question.sh` header owns the exact generation, validation, and delivery invocations used by fixture-enabled primary Pi sessions.
 The extension serializes its own modal and uses the adapter before display and during delivery to verify the active primary home, prove shared session-lock ownership, and validate the binding against one canonical active state directory.
 Cancellation, missing UI, UI failure, and any binding mismatch return a structured cancelled result without closing the decision.
-An unconfirmed delivery also leaves the decision open, preserves the selected answer and a bounded owner diagnostic, and forbids automatic resend.
+Every failure before the adapter proves entry into `fm-send` is a `binding-mismatch`; only an indeterminate result after owner entry becomes `delivery-unknown`.
+A `delivery-unknown` result leaves the decision open, preserves the selected answer and a bounded owner diagnostic, and forbids automatic resend.
 A successful answer goes only through `bin/fm-ask-user-question.sh deliver`, which reuses `fm-classify-lib.sh`'s open-decision fold and delegates to `fm-send.sh --resolve-key`; selected option labels remain presentation data while delivery carries their stable IDs.
 The dialog never sends to a pane, rewrites Pi input, or creates durable state of its own.
 
