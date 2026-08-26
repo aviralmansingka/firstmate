@@ -419,8 +419,8 @@ Do not hand-edit, commit, or fix findings yourself while a run is active - the p
 
 Two firstmate-specific rules layer on top of that guidance:
 - ask-user findings are never yours to answer: present them, then escalate to firstmate (rule 6) and stop.
-  Call the \`ask_user_question\` extension tool to render the finding as a concise question with the finding's options as the tool's options.
   Append a \`needs-decision [key=<finding-id>]: {one-line summary}\` status line so firstmate's watcher wakes firstmate.
+  Call the \`ask_user_question\` extension tool to render the finding as a concise question with the finding's options as the tool's options.
   The \`ask_user_question\` tool is the presentation mechanism, not a license to decide.
   Firstmate applies \`ask-user-authority\` and obtains any required captain decision, so stop and wait rather than answering your own finding.
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.

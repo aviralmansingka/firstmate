@@ -362,7 +362,7 @@ test_no_mistakes_dod_wording() {
 # in a status firstmate must relay. The boundary keeps the tool a presentation
 # mechanism, not a license to decide.
 test_no_mistakes_dod_ask_user_presentation() {
-  local home id brief
+  local home id brief wake_line ask_line
   home="$TMP_ROOT/ask-user-presentation-home"
   mkdir -p "$home/data"
   id="brief-askuser-e1"
@@ -389,6 +389,18 @@ test_no_mistakes_dod_ask_user_presentation() {
     "no-mistakes DOD lost the rule-6 escalation cross-reference"
   assert_grep "feed it to the gate with \`no-mistakes axi respond\`" "$brief" \
     "no-mistakes DOD lost the decision-feed-back step"
+  # ask_user_question blocks until answered, so the needs-decision wake line
+  # MUST be appended before the presentation call - otherwise firstmate's
+  # watcher never wakes and the escalation deadlocks. Assert the generated
+  # brief emits the wake line before the ask_user_question call.
+  # shellcheck disable=SC2016  # single quotes keep backticks/brackets literal for grep -F
+  wake_line=$(grep -n -F '`needs-decision [key=<finding-id>]: {one-line summary}`' "$brief" | head -1 | cut -d: -f1)
+  # shellcheck disable=SC2016
+  ask_line=$(grep -n -F 'Call the `ask_user_question` extension tool' "$brief" | head -1 | cut -d: -f1)
+  [ -n "$wake_line" ] || fail "no needs-decision wake line found in generated brief"
+  [ -n "$ask_line" ] || fail "no ask_user_question call line found in generated brief"
+  [ "$wake_line" -lt "$ask_line" ] \
+    || fail "no-mistakes DOD emits needs-decision wake line at line $wake_line but ask_user_question at line $ask_line; wake line must come first or ask_user_question blocks before firstmate wakes"
   pass "fm-brief.sh: no-mistakes ask-user findings present via ask_user_question while keeping the wake line and authority boundary"
 }
 
