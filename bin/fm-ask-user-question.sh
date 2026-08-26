@@ -13,6 +13,10 @@
 # successful delivery to fm-send.sh --resolve-key.
 set -euo pipefail
 
+PREFLIGHT_FAILURE=3
+DELIVERY_UNKNOWN=4
+failure_status=2
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$ROOT/bin/fm-classify-lib.sh"
@@ -21,7 +25,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 die() {
   printf 'fm-ask-user-question: %s\n' "$*" >&2
-  exit 2
+  exit "$failure_status"
 }
 
 hash_stream() {
@@ -121,6 +125,11 @@ require_primary_lock() {
 
 command=${1:-}
 [ -n "$command" ] || die 'a command is required'
+case "$command" in
+  generation|validate) ;;
+  deliver) failure_status=$PREFLIGHT_FAILURE ;;
+  *) die "unknown command: $command" ;;
+esac
 shift
 parse_binding "$@"
 validate_identity
@@ -144,8 +153,12 @@ case "$command" in
     [ -n "$answer" ] || die '--answer is required'
     require_primary_lock
     validate_generation
-    FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
-      "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"
+    if FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
+      "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"; then
+      :
+    else
+      exit "$DELIVERY_UNKNOWN"
+    fi
     ;;
   *) die "unknown command: $command" ;;
 esac

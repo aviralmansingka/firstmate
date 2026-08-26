@@ -28,6 +28,12 @@ printf '%s\0' "$@" >> "$FM_SEND_LOG"
 if [ -n "${FM_SEND_STATE_LOG:-}" ]; then
   printf '%s\n' "${FM_STATE_OVERRIDE:-}" >> "$FM_SEND_STATE_LOG"
 fi
+if [ "${FM_SEND_FAIL:-0}" = 1 ]; then
+  i=0
+  while [ "$i" -lt 600 ]; do printf x >&2; i=$((i + 1)); done
+  printf '\001fm-send: answer queued but decision close failed\n' >&2
+  exit 9
+fi
 SH
   chmod +x "$fixture/root/bin/fm-ask-user-question.sh" "$fixture/root/bin/fm-send.sh"
   printf 'task_id=alpha\nbackend=tmux\n' > "$fixture/home/state/alpha.meta"
@@ -79,6 +85,17 @@ JS
   [ "$(cat "$fixture/lock-check.log")" = "$(printf '%s\n%s' "$canonical_state" "$canonical_state")" ] \
     || fail "adapter did not delegate validation and delivery lock proof to the shared owner"
 
+  out=$(FM_HOME="$fixture/home" FM_SEND_LOG="$fixture/send.log" FM_SEND_FAIL=1 \
+    "$fixture/root/bin/fm-ask-user-question.sh" deliver \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" \
+      --answer uncertain 2>&1)
+  status=$?
+  [ "$status" -eq 4 ] || fail "owner failure was not reported as delivery unknown: $status $out"
+  case "$out" in
+    *"fm-send: answer queued but decision close failed") ;;
+    *) fail "owner failure diagnostic was lost: $out" ;;
+  esac
+
   cp "$fixture/send.log" "$fixture/send-before-marker.log"
   ln -s "$fixture/missing-secondmate-marker" "$fixture/home/.fm-secondmate-home"
   if FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
@@ -100,6 +117,15 @@ JS
     validate --home "$fixture/home" --task alpha --key scope --generation "$generation" >/dev/null 2>&1; then
     fail "stale source generation was accepted"
   fi
+  cp "$fixture/send.log" "$fixture/send-before-preflight.log"
+  out=$(FM_HOME="$fixture/home" FM_SEND_LOG="$fixture/send.log" \
+    "$fixture/root/bin/fm-ask-user-question.sh" deliver \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" \
+      --answer blocked 2>&1)
+  status=$?
+  [ "$status" -eq 3 ] || fail "delivery preflight mismatch returned the wrong result: $status $out"
+  cmp -s "$fixture/send-before-preflight.log" "$fixture/send.log" \
+    || fail "delivery preflight mismatch reached fm-send"
   if FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
     validate --home "$fixture/home" --task beta --key scope --generation "$generation" >/dev/null 2>&1; then
     fail "mismatched task was accepted"
@@ -296,19 +322,25 @@ done
 [ "$(cat "$FM_STATE_OVERRIDE/.lock" 2>/dev/null)" = owned ] || exit 2
 [ "$task" != wrong-task ] || exit 2
 [ "$key" != wrong-generation ] || exit 2
-if [ "$command" = deliver ] && [ "$key" = stale-before-delivery ]; then
-  {
-    printf 'fm-send: answer queued\001 but decision close failed '
-    i=0
-    while [ "$i" -lt 600 ]; do printf x; i=$((i + 1)); done
-    printf '\n'
-  } >&2
-  exit 2
+if [ "$command" = deliver ] && [ "$key" = preflight-mismatch ]; then
+  exit 3
+fi
+if [ "$command" = deliver ]; then
+  printf '%s\n' "$key" >> "$FM_OWNER_LOG"
+  if [ "$key" = owner-failure ]; then
+    {
+      i=0
+      while [ "$i" -lt 600 ]; do printf x; i=$((i + 1)); done
+      printf '\001fm-send: answer queued but decision close failed\n'
+    } >&2
+    exit 4
+  fi
 fi
 exit 0
 SH
   chmod +x "$fixture/adapter.sh"
   : > "$fixture/adapter.log"
+  : > "$fixture/owner.log"
 
   out=$(cd "$fixture/project" && \
     FM_HOME="$fixture/home" \
@@ -316,6 +348,7 @@ SH
     FM_ASK_USER_QUESTION_FIXTURE=1 \
     FM_ASK_USER_QUESTION_ADAPTER="$fixture/adapter.sh" \
     FM_ASK_LOG="$fixture/adapter.log" \
+    FM_OWNER_LOG="$fixture/owner.log" \
     EXT="$fixture/project/.pi/extensions/fm-ask-user-question.ts" \
     node --input-type=module 2>&1 <<'JS'
 import { readFileSync, writeFileSync } from "node:fs";
@@ -351,7 +384,7 @@ const base = {
   options: [{ id: "safe", label: "Safe" }],
 };
 const adapterLog = () => readFileSync(process.env.FM_ASK_LOG, "utf8").split("\0").filter(Boolean);
-const deliveryCount = () => adapterLog().filter((value) => value === "deliver").length;
+const deliveryCount = () => readFileSync(process.env.FM_OWNER_LOG, "utf8").split("\n").filter(Boolean).length;
 let customCalls = 0;
 let activeModals = 0;
 let maxActiveModals = 0;
@@ -464,7 +497,17 @@ writeFileSync(`${process.env.FM_STATE_OVERRIDE}/.lock`, "owned\n");
 
 behavior = "single";
 before = deliveryCount();
-result = await execute({ ...base, decisionKey: "stale-before-delivery" });
+result = await execute({ ...base, decisionKey: "preflight-mismatch" });
+if (result.details.reason !== "binding-mismatch" || result.details.delivered !== false ||
+    result.details.answers[0]?.id !== "safe" || deliveryCount() !== before) {
+  throw new Error(`preflight mismatch was misclassified: ${JSON.stringify(result.details)}`);
+}
+const renderedMismatch = tool.renderResult(result, { expanded: false }, theme).render(1000).join("\n");
+if (renderedMismatch.includes("Do not resend automatically.")) {
+  throw new Error(`preflight mismatch showed a no-resend warning: ${renderedMismatch}`);
+}
+
+result = await execute({ ...base, decisionKey: "owner-failure" });
 if (result.details.reason !== "delivery-unknown" || result.details.delivered !== "unknown" ||
     result.details.answers[0]?.id !== "safe" || result.details.answers[0]?.text !== "Safe" ||
     typeof result.details.diagnostic !== "string" || result.details.diagnostic.length !== 500 ||

@@ -28,6 +28,7 @@ try {
   activeState = configuredState;
 }
 const adapter = process.env.FM_ASK_USER_QUESTION_ADAPTER || `${root}/bin/fm-ask-user-question.sh`;
+const adapterDeliveryUnknown = 4;
 
 const OptionSchema = Type.Object({
   id: Type.String({ description: "Stable answer identifier" }),
@@ -185,8 +186,11 @@ function deliveryDiagnostic(delivery: ReturnType<typeof runAdapter>): string {
   const output = [delivery.stderr, delivery.stdout, delivery.error?.message]
     .filter(Boolean)
     .map(String)
-    .join(" ");
-  return cleanDisplay(output, 500) || `Firstmate delivery owner exited with status ${delivery.status ?? "unknown"}.`;
+    .join(" ")
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return output.slice(-500) || `Firstmate delivery owner exited with status ${delivery.status ?? "unknown"}.`;
 }
 
 function showQuestion(params: QuestionParams, signal: AbortSignal, ctx: ExtensionContext) {
@@ -388,7 +392,16 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before delivery.");
 
         const delivery = runAdapter("deliver", params, deliveryText(modal.answers));
-        if (delivery.status !== 0) {
+        if (delivery.status !== 0 && delivery.status !== adapterDeliveryUnknown) {
+          return cancelled(
+            params,
+            "binding-mismatch",
+            "Captain dialog source binding no longer matches.",
+            false,
+            modal.answers,
+          );
+        }
+        if (delivery.status === adapterDeliveryUnknown) {
           return cancelled(
             params,
             "delivery-unknown",
