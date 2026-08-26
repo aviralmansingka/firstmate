@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import {
   Editor,
@@ -39,7 +40,7 @@ const ParamsSchema = Type.Object({
   taskId: Type.String({ description: "Exact Firstmate task id" }),
   decisionKey: Type.String({ description: "Exact open decision key" }),
   sourceGeneration: Type.String({ description: "Generation returned by fm-ask-user-question.sh generation" }),
-  mode: Type.Union([Type.Literal("text"), Type.Literal("single"), Type.Literal("multi")]),
+  mode: StringEnum(["text", "single", "multi"] as const),
   question: Type.String({ description: "Question shown to the captain" }),
   details: Type.Optional(Type.String({ description: "Optional context shown below the question" })),
   options: Type.Optional(Type.Array(OptionSchema, { description: "Options for single or multi mode" })),

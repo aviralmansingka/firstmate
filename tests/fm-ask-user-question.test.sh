@@ -123,6 +123,108 @@ test_state_override_binding() {
   pass "ask-user adapter binds generation, validation, and delivery to one canonical state override"
 }
 
+test_pi_state_override_integration() {
+  local fixture generation out status canonical_state
+  if ! command -v node >/dev/null 2>&1 || [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
+    echo "skip: installed Pi package not found for ask-user-question state override integration test"
+    return 0
+  fi
+  fixture="$TMP_ROOT/pi-state-override"
+  make_adapter_fixture "$fixture"
+  mkdir -p "$fixture/root/.pi/extensions" "$fixture/root/node_modules/@earendil-works" \
+    "$fixture/active-state"
+  cp "$ROOT/.pi/extensions/fm-ask-user-question.ts" "$fixture/root/.pi/extensions/fm-ask-user-question.ts"
+  ln -s "$PI_PACKAGE_DIR" "$fixture/root/node_modules/@earendil-works/pi-coding-agent"
+  ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-ai" "$fixture/root/node_modules/@earendil-works/pi-ai"
+  ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$fixture/root/node_modules/@earendil-works/pi-tui"
+  ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/root/node_modules/typebox"
+  printf '%s\n' '{"type":"module"}' > "$fixture/root/package.json"
+  cp "$fixture/home/state/alpha.meta" "$fixture/active-state/alpha.meta"
+  cp "$fixture/home/state/alpha.status" "$fixture/active-state/alpha.status"
+  printf 'resolved: [key=scope] default tree is closed\n' > "$fixture/home/state/alpha.status"
+  printf '%s\n' 1 > "$fixture/home/state/.lock"
+  printf '%s\n' "$$" > "$fixture/active-state/.lock"
+  canonical_state=$(cd "$fixture/active-state" && pwd -P)
+  generation=$(FM_HOME="$fixture/home" FM_STATE_OVERRIDE="$fixture/active-state" \
+    "$fixture/root/bin/fm-ask-user-question.sh" generation \
+      --home "$fixture/home" --task alpha --key scope) \
+    || fail "state override integration generation failed"
+
+  out=$(cd "$fixture/root" && \
+    FM_HOME="$fixture/home" \
+    FM_STATE_OVERRIDE="$fixture/active-state" \
+    FM_ASK_USER_QUESTION_FIXTURE=1 \
+    FM_SEND_LOG="$fixture/send.log" \
+    FM_SEND_STATE_LOG="$fixture/send-state.log" \
+    GENERATION="$generation" \
+    EXPECTED_STATE="$canonical_state" \
+    EXT="$fixture/root/.pi/extensions/fm-ask-user-question.ts" \
+    node --input-type=module 2>&1 <<'JS'
+import { readFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
+
+const extension = await import(`${pathToFileURL(process.env.EXT).href}?fixture=${Date.now()}`);
+delete process.env.FM_STATE_OVERRIDE;
+let tool;
+extension.default({
+  registerTool(candidate) {
+    if (candidate.name === "fm_ask_user_question") tool = candidate;
+  },
+});
+if (!tool) throw new Error("fixture flag did not register the tool");
+
+const theme = {
+  fg(_color, text) { return text; },
+  bg(_color, text) { return text; },
+  bold(text) { return text; },
+};
+const ui = {
+  custom(factory) {
+    return new Promise((resolve, reject) => {
+      try {
+        const tui = { requestRender() {}, terminal: { rows: 40, columns: 80 } };
+        const component = factory(tui, theme, {}, resolve);
+        component.handleInput("\r");
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+};
+const result = await tool.execute("call", {
+  home: process.env.FM_HOME,
+  taskId: "alpha",
+  decisionKey: "scope",
+  sourceGeneration: process.env.GENERATION,
+  mode: "single",
+  question: "Choose",
+  options: [{ id: "safe", label: "Safe" }],
+}, new AbortController().signal, undefined, { mode: "tui", ui });
+if (result.details.status !== "answered" || result.details.answers[0]?.id !== "safe") {
+  throw new Error(`override-backed question was not answered: ${JSON.stringify(result.details)}`);
+}
+const args = readFileSync(process.env.FM_SEND_LOG, "utf8").split("\0").filter(Boolean);
+const expectedArgs = [
+  "alpha",
+  "--resolve-key",
+  "scope",
+  "Captain answer: selected safe: Safe",
+];
+if (JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
+  throw new Error(`fm-send received wrong calls: ${JSON.stringify(args)}`);
+}
+const states = readFileSync(process.env.FM_SEND_STATE_LOG, "utf8").trim().split("\n");
+if (states.length !== 1 || states[0] !== process.env.EXPECTED_STATE) {
+  throw new Error(`fm-send inherited wrong state: ${JSON.stringify(states)}`);
+}
+JS
+  )
+  status=$?
+  [ "$status" -eq 0 ] || fail "Pi state override integration failed: $out"
+  [ -z "$out" ] || fail "Pi state override integration printed output: $out"
+  pass "Pi ask-user tool keeps one canonical override through modal delivery"
+}
+
 test_pi_modal_contract() {
   local fixture out status
   if ! command -v node >/dev/null 2>&1 || [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
@@ -134,6 +236,7 @@ test_pi_modal_contract() {
     "$fixture/home/state" "$fixture/active-state"
   cp "$ROOT/.pi/extensions/fm-ask-user-question.ts" "$fixture/project/.pi/extensions/fm-ask-user-question.ts"
   ln -s "$PI_PACKAGE_DIR" "$fixture/project/node_modules/@earendil-works/pi-coding-agent"
+  ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-ai" "$fixture/project/node_modules/@earendil-works/pi-ai"
   ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$fixture/project/node_modules/@earendil-works/pi-tui"
   ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/project/node_modules/typebox"
   printf '%s\n' '{"type":"module"}' > "$fixture/project/package.json"
@@ -366,6 +469,7 @@ test_fixture_gate() {
   mkdir -p "$fixture/project/.pi/extensions" "$fixture/project/node_modules/@earendil-works"
   cp "$ROOT/.pi/extensions/fm-ask-user-question.ts" "$fixture/project/.pi/extensions/fm-ask-user-question.ts"
   ln -s "$PI_PACKAGE_DIR" "$fixture/project/node_modules/@earendil-works/pi-coding-agent"
+  ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-ai" "$fixture/project/node_modules/@earendil-works/pi-ai"
   ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$fixture/project/node_modules/@earendil-works/pi-tui"
   ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/project/node_modules/typebox"
   printf '%s\n' '{"type":"module"}' > "$fixture/project/package.json"
@@ -385,5 +489,6 @@ JS
 
 test_binding_and_delivery_adapter
 test_state_override_binding
+test_pi_state_override_integration
 test_pi_modal_contract
 test_fixture_gate
