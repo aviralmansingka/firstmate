@@ -1,6 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -140,7 +142,7 @@ function cancelled(
   return { content: [{ type: "text" as const, text }], details };
 }
 
-function runAdapter(command: "validate" | "deliver", params: QuestionParams, answer?: string) {
+function adapterArgs(command: "validate" | "deliver", params: QuestionParams, answer?: string): string[] {
   const args = [
     command,
     "--home", params.home,
@@ -149,10 +151,69 @@ function runAdapter(command: "validate" | "deliver", params: QuestionParams, ans
     "--generation", params.sourceGeneration,
   ];
   if (answer !== undefined) args.push("--answer", answer);
-  return spawnSync(adapter, args, {
+  return args;
+}
+
+function validateAdapter(params: QuestionParams) {
+  return spawnSync(adapter, adapterArgs("validate", params), {
     encoding: "utf8",
     env: { ...process.env, FM_HOME: activeHome, FM_STATE_OVERRIDE: activeState },
-    ...(command === "validate" ? { timeout: 10_000 } : {}),
+    timeout: 10_000,
+  });
+}
+
+type DeliveryResult = {
+  status: number | null;
+  signal: NodeJS.Signals | null;
+  ownerEntered: boolean;
+  diagnostic: string;
+};
+
+function deliverAdapter(params: QuestionParams, answer: string): Promise<DeliveryResult> {
+  const marker = `fm-owner-entry-v1:${randomBytes(16).toString("hex")}`;
+  const child = spawn(adapter, adapterArgs("deliver", params, answer), {
+    env: {
+      ...process.env,
+      FM_HOME: activeHome,
+      FM_STATE_OVERRIDE: activeState,
+      FM_ASK_USER_QUESTION_OWNER_ENTRY_FD: "3",
+      FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER: marker,
+    },
+    stdio: ["ignore", "pipe", "pipe", "pipe"],
+  });
+
+  return new Promise((resolveDelivery) => {
+    let ownerEntered = false;
+    let ownerOutput = "";
+    let diagnostic = "";
+    const stdoutDecoder = new StringDecoder("utf8");
+    const stderrDecoder = new StringDecoder("utf8");
+    const appendDiagnostic = (value: string): void => {
+      const clean = value
+        .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
+        .replace(/\s+/g, " ");
+      diagnostic = `${diagnostic}${clean}`.replace(/\s+/g, " ").trim().slice(-500);
+    };
+    const ownerEntry = child.stdio[3] as NodeJS.ReadableStream | null;
+
+    child.stdout?.on("data", (chunk: Buffer) => appendDiagnostic(stdoutDecoder.write(chunk)));
+    child.stdout?.on("end", () => appendDiagnostic(stdoutDecoder.end()));
+    child.stderr?.on("data", (chunk: Buffer) => appendDiagnostic(stderrDecoder.write(chunk)));
+    child.stderr?.on("end", () => appendDiagnostic(stderrDecoder.end()));
+    ownerEntry?.on("data", (chunk: Buffer) => {
+      if (ownerEntered) return;
+      ownerOutput = `${ownerOutput}${chunk.toString("utf8")}`.slice(0, marker.length + 1);
+      ownerEntered = ownerOutput === `${marker}\n`;
+    });
+    child.once("error", (error) => appendDiagnostic(error.message));
+    child.once("close", (status, signal) => {
+      resolveDelivery({
+        status,
+        signal,
+        ownerEntered,
+        diagnostic: diagnostic || `Firstmate delivery owner exited with ${signal ? `signal ${signal}` : `status ${status ?? "unknown"}`}.`,
+      });
+    });
   });
 }
 
@@ -179,17 +240,6 @@ function deliveryText(answers: AnswerItem[]): string {
     if (answer.type === "other") return `other: ${answer.text}`;
     return answer.text;
   }).join("; ");
-}
-
-function deliveryDiagnostic(delivery: ReturnType<typeof runAdapter>): string {
-  const output = [delivery.stderr, delivery.stdout, delivery.error?.message]
-    .filter(Boolean)
-    .map(String)
-    .join(" ")
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  return output.slice(-500) || `Firstmate delivery owner exited with status ${delivery.status ?? "unknown"}.`;
 }
 
 function showQuestion(params: QuestionParams, signal: AbortSignal, ctx: ExtensionContext) {
@@ -378,7 +428,7 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
 
       return withPrimaryModal(async () => {
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before display.");
-        const validation = runAdapter("validate", params);
+        const validation = validateAdapter(params);
         if (validation.status !== 0) return cancelled(params, "binding-mismatch", "Captain dialog source binding no longer matches.");
 
         let modal: ModalResult | undefined;
@@ -390,9 +440,8 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
         if (!modal || modal.cancelled) return cancelled(params, modal?.reason || "ui-failure", "Captain left the decision open.");
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before delivery.");
 
-        const delivery = runAdapter("deliver", params, deliveryText(modal.answers));
-        const deliveryWasAttempted = delivery.status === 4 || (delivery.status === null && delivery.pid > 0);
-        if (delivery.status !== 0 && !deliveryWasAttempted) {
+        const delivery = await deliverAdapter(params, deliveryText(modal.answers));
+        if (!delivery.ownerEntered) {
           return cancelled(
             params,
             "binding-mismatch",
@@ -408,7 +457,7 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
             "Captain answer delivery could not be confirmed; the decision remains open. Do not resend automatically.",
             "unknown",
             modal.answers,
-            deliveryDiagnostic(delivery),
+            delivery.diagnostic,
           );
         }
         const details: AnswerDetails = {

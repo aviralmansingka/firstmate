@@ -367,7 +367,13 @@ fi
 if [ "$command" = deliver ] && [ "$key" = known-status ]; then
   exit 2
 fi
+if [ "$command" = deliver ] && [ "$key" = pre-marker-signal ]; then
+  kill -TERM "$$"
+fi
 if [ "$command" = deliver ]; then
+  [ "${FM_ASK_USER_QUESTION_OWNER_ENTRY_FD:-}" = 3 ] || exit 2
+  [ -n "${FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER:-}" ] || exit 2
+  printf '%s\n' "$FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER" >&3
   printf '%s\n' "$key" >> "$FM_OWNER_LOG"
   if [ "$key" = owner-failure ]; then
     {
@@ -379,6 +385,9 @@ if [ "$command" = deliver ]; then
   fi
   if [ "$key" = owner-signal ]; then
     kill -TERM "$$"
+  fi
+  if [ "$key" = large-owner ]; then
+    node -e 'process.stderr.write("x".repeat(1200000))'
   fi
   if [ "$key" = slow-owner ]; then
     sleep 11
@@ -579,6 +588,17 @@ if (renderedLaunchError.includes("Do not resend automatically.")) {
   throw new Error(`adapter launch error showed a no-resend warning: ${renderedLaunchError}`);
 }
 
+before = deliveryCount();
+result = await execute({ ...base, decisionKey: "pre-marker-signal" });
+if (result.details.reason !== "binding-mismatch" || result.details.delivered !== false ||
+    result.details.answers[0]?.id !== "safe" || deliveryCount() !== before) {
+  throw new Error(`pre-marker signal was misclassified: ${JSON.stringify(result.details)}`);
+}
+const renderedPreMarkerSignal = tool.renderResult(result, { expanded: false }, theme).render(1000).join("\n");
+if (renderedPreMarkerSignal.includes("Do not resend automatically.")) {
+  throw new Error(`pre-marker signal showed a no-resend warning: ${renderedPreMarkerSignal}`);
+}
+
 result = await execute({ ...base, decisionKey: "owner-failure" });
 if (result.details.reason !== "delivery-unknown" || result.details.delivered !== "unknown" ||
     result.details.answers[0]?.id !== "safe" || result.details.answers[0]?.text !== "Safe" ||
@@ -599,6 +619,13 @@ result = await execute({ ...base, decisionKey: "owner-signal" });
 if (result.details.reason !== "delivery-unknown" || result.details.delivered !== "unknown" ||
     result.details.answers[0]?.id !== "safe" || deliveryCount() !== before + 1) {
   throw new Error(`indeterminate owner result was misclassified: ${JSON.stringify(result.details)}`);
+}
+
+before = deliveryCount();
+result = await execute({ ...base, decisionKey: "large-owner" });
+if (result.details.status !== "answered" || result.details.delivered !== true ||
+    deliveryCount() !== before + 1) {
+  throw new Error(`large owner output killed delivery: ${JSON.stringify(result.details)}`);
 }
 
 before = deliveryCount();

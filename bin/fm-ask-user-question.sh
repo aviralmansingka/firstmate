@@ -159,6 +159,10 @@ case "$command" in
     validate_generation
     [ -x "$ROOT/bin/fm-send.sh" ] || die 'delivery owner is missing or not executable'
     trap - ERR
+    if [ -n "${FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER:-}" ]; then
+      [ "${FM_ASK_USER_QUESTION_OWNER_ENTRY_FD:-}" = 3 ] || exit "$PREFLIGHT_FAILURE"
+      printf '%s\n' "$FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER" >&3 || exit "$PREFLIGHT_FAILURE"
+    fi
     if FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
       "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"; then
       :
