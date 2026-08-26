@@ -364,6 +364,9 @@ done
 if [ "$command" = deliver ] && [ "$key" = preflight-mismatch ]; then
   exit 3
 fi
+if [ "$command" = deliver ] && [ "$key" = known-status ]; then
+  exit 2
+fi
 if [ "$command" = deliver ]; then
   printf '%s\n' "$key" >> "$FM_OWNER_LOG"
   if [ "$key" = owner-failure ]; then
@@ -396,7 +399,7 @@ SH
     FM_OWNER_LOG="$fixture/owner.log" \
     EXT="$fixture/project/.pi/extensions/fm-ask-user-question.ts" \
     node --input-type=module 2>&1 <<'JS'
-import { readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { visibleWidth } from "@earendil-works/pi-tui";
 
@@ -459,7 +462,10 @@ const ui = {
         resizeEvidence = true;
         if (behavior === "throw") throw new Error("synthetic UI failure");
         if (behavior === "cancel") component.handleInput(ESCAPE);
-        else if (behavior === "single") {
+        else if (behavior === "launch-error") {
+          chmodSync(process.env.FM_ASK_USER_QUESTION_ADAPTER, 0o644);
+          component.handleInput(ENTER);
+        } else if (behavior === "single") {
           component.handleInput(ENTER);
           component.handleInput(ENTER);
         } else if (behavior === "text") {
@@ -550,6 +556,27 @@ if (result.details.reason !== "binding-mismatch" || result.details.delivered !==
 const renderedMismatch = tool.renderResult(result, { expanded: false }, theme).render(1000).join("\n");
 if (renderedMismatch.includes("Do not resend automatically.")) {
   throw new Error(`preflight mismatch showed a no-resend warning: ${renderedMismatch}`);
+}
+
+before = deliveryCount();
+result = await execute({ ...base, decisionKey: "known-status" });
+if (result.details.reason !== "binding-mismatch" || result.details.delivered !== false ||
+    result.details.answers[0]?.id !== "safe" || deliveryCount() !== before) {
+  throw new Error(`known adapter status was misclassified: ${JSON.stringify(result.details)}`);
+}
+
+behavior = "launch-error";
+before = deliveryCount();
+result = await execute({ ...base, decisionKey: "launch-error" });
+chmodSync(process.env.FM_ASK_USER_QUESTION_ADAPTER, 0o755);
+behavior = "single";
+if (result.details.reason !== "binding-mismatch" || result.details.delivered !== false ||
+    result.details.answers[0]?.id !== "safe" || deliveryCount() !== before) {
+  throw new Error(`adapter launch error was misclassified: ${JSON.stringify(result.details)}`);
+}
+const renderedLaunchError = tool.renderResult(result, { expanded: false }, theme).render(1000).join("\n");
+if (renderedLaunchError.includes("Do not resend automatically.")) {
+  throw new Error(`adapter launch error showed a no-resend warning: ${renderedLaunchError}`);
 }
 
 result = await execute({ ...base, decisionKey: "owner-failure" });

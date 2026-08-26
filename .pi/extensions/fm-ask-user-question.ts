@@ -391,7 +391,8 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before delivery.");
 
         const delivery = runAdapter("deliver", params, deliveryText(modal.answers));
-        if (delivery.status === 3) {
+        const deliveryWasAttempted = delivery.status === 4 || (delivery.status === null && delivery.pid > 0);
+        if (delivery.status !== 0 && !deliveryWasAttempted) {
           return cancelled(
             params,
             "binding-mismatch",
