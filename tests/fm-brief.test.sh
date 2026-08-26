@@ -354,6 +354,56 @@ test_no_mistakes_dod_wording() {
   pass "fm-brief.sh: no-mistakes DOD keeps its apostrophe prose, now parse-safe"
 }
 
+# A no-mistakes ask-user finding must be presented through the ask_user_question
+# extension tool AND still append the keyed needs-decision wake line, while the
+# ask-user-authority boundary (the worker never answers its own finding) is
+# preserved. Both halves matter: presentation without the wake line leaves
+# firstmate asleep, and the wake line without presentation buries the question
+# in a status firstmate must relay. The boundary keeps the tool a presentation
+# mechanism, not a license to decide.
+test_no_mistakes_dod_ask_user_presentation() {
+  local home id brief wake_line ask_line
+  home="$TMP_ROOT/ask-user-presentation-home"
+  mkdir -p "$home/data"
+  id="brief-askuser-e1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "brief was not scaffolded"
+  assert_grep "Call the \`ask_user_question\` extension tool" "$brief" \
+    "no-mistakes DOD did not instruct the worker to present an ask-user finding via ask_user_question"
+  assert_grep "with the finding's options as the tool's options" "$brief" \
+    "no-mistakes DOD did not carry the finding's options into the ask_user_question options"
+  # shellcheck disable=SC2016  # single quotes are deliberate: the backticks and brackets must stay literal for the fixed-string grep
+  assert_grep '`needs-decision [key=<finding-id>]: {one-line summary}`' "$brief" \
+    "no-mistakes DOD did not keep the keyed needs-decision wake line alongside the presentation"
+  assert_grep "so firstmate's watcher wakes firstmate" "$brief" \
+    "no-mistakes DOD did not state the wake-line purpose"
+  assert_grep "presentation mechanism, not a license to decide" "$brief" \
+    "no-mistakes DOD dropped the ask-user-authority boundary on the presentation tool"
+  assert_grep "stop and wait rather than answering your own finding" "$brief" \
+    "no-mistakes DOD did not forbid the worker from answering its own finding"
+  # The status-line + keyed-decision + resolved contract that rule 6 owns must
+  # still be present unchanged, so the watcher and ask-user-authority paths keep
+  # working alongside the new presentation mechanism.
+  assert_grep "escalate to firstmate (rule 6) and stop" "$brief" \
+    "no-mistakes DOD lost the rule-6 escalation cross-reference"
+  assert_grep "feed it to the gate with \`no-mistakes axi respond\`" "$brief" \
+    "no-mistakes DOD lost the decision-feed-back step"
+  # ask_user_question blocks until answered, so the needs-decision wake line
+  # MUST be appended before the presentation call - otherwise firstmate's
+  # watcher never wakes and the escalation deadlocks. Assert the generated
+  # brief emits the wake line before the ask_user_question call.
+  # shellcheck disable=SC2016  # single quotes keep backticks/brackets literal for grep -F
+  wake_line=$(grep -n -F '`needs-decision [key=<finding-id>]: {one-line summary}`' "$brief" | head -1 | cut -d: -f1)
+  # shellcheck disable=SC2016
+  ask_line=$(grep -n -F 'Call the `ask_user_question` extension tool' "$brief" | head -1 | cut -d: -f1)
+  [ -n "$wake_line" ] || fail "no needs-decision wake line found in generated brief"
+  [ -n "$ask_line" ] || fail "no ask_user_question call line found in generated brief"
+  [ "$wake_line" -lt "$ask_line" ] \
+    || fail "no-mistakes DOD emits needs-decision wake line at line $wake_line but ask_user_question at line $ask_line; wake line must come first or ask_user_question blocks before firstmate wakes"
+  pass "fm-brief.sh: no-mistakes ask-user findings present via ask_user_question while keeping the wake line and authority boundary"
+}
+
 test_ship_project_memory_wording() {
   local home id brief
   home="$TMP_ROOT/project-memory-home"
@@ -554,8 +604,12 @@ test_secondmate_marked_request_reporting_contract() {
     "secondmate charter lost detailed document pointers"
   assert_grep 'Report only true captain-relevant outcomes or a declared external wait' "$brief" \
     "secondmate charter lost declared external waits"
-  assert_grep 'a captain decision, a real blocker, a failure, or work ready for review' "$brief" \
-    "secondmate charter lost decisions, blockers, failures, or ready outcomes"
+  assert_grep 'a captain decision, a real blocker, a failure, work ready for review, or work you landed' "$brief" \
+    "secondmate charter lost decisions, blockers, failures, ready outcomes, or landed work"
+  # Under standing merge authority nothing is ever "ready for review", so the
+  # landed merge is the trigger a charter without this line silently omits.
+  assert_grep 'a merge you performed yourself under standing merge authority and one the captain merged on the forge' "$brief" \
+    "secondmate charter did not name a landed merge as a reporting trigger"
   assert_grep 'States: working, needs-decision, blocked, paused, done, failed.' "$brief" \
     "secondmate charter changed the preserved status vocabulary"
   pass "fm-brief.sh: marked requests avoid generic acknowledgements and preserve material reporting"
@@ -756,6 +810,7 @@ test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
+test_no_mistakes_dod_ask_user_presentation
 test_ship_project_memory_wording
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path

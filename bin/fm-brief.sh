@@ -258,7 +258,8 @@ Report only true captain-relevant outcomes or a declared external wait by append
    \`echo "{state}: {one short line}" >> $STATUS_FILE\`
 States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
 Use \`$PAUSED_VERB: {why}\` (distinct from \`blocked:\`) only when your domain is deliberately idling on a known external wait you expect to clear on its own; use \`blocked:\` when you are stuck and need firstmate to act.
-Use this only for material phase changes, a captain decision, a real blocker, a failure, or work ready for review.
+Use this only for material phase changes, a captain decision, a real blocker, a failure, work ready for review, or work you landed.
+Work you landed includes a merge you performed yourself under standing merge authority and one the captain merged on the forge: under that authority nothing is ever \"ready for review\", so a landed merge that goes unreported reaches the captain as silence.
 This is also how you return the answer to a marked from-firstmate request above.
 A marked request requires one correlated answer after the work; it does not require a separate receipt or start acknowledgement.
 Never append \`working:\` merely to acknowledge receipt or announce that a marked request has started.
@@ -417,8 +418,11 @@ When starting no-mistakes, make \`--intent\` preserve all relevant content from 
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 Two firstmate-specific rules layer on top of that guidance:
-- ask-user findings are never yours to answer: escalate to firstmate (rule 6) and stop.
-  Firstmate applies \`ask-user-authority\` and obtains any required captain decision.
+- ask-user findings are never yours to answer: present them, then escalate to firstmate (rule 6) and stop.
+  Append a \`needs-decision [key=<finding-id>]: {one-line summary}\` status line so firstmate's watcher wakes firstmate.
+  Call the \`ask_user_question\` extension tool to render the finding as a concise question with the finding's options as the tool's options.
+  The \`ask_user_question\` tool is the presentation mechanism, not a license to decide.
+  Firstmate applies \`ask-user-authority\` and obtains any required captain decision, so stop and wait rather than answering your own finding.
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
