@@ -51,6 +51,19 @@ A third bounded section, RECORD DIVERGENCE, prints on the same drains for the op
 A failed read, output, or concurrent-replacement check prevents the snapshot cursor from advancing across uncertain bytes, and teardown retires a task's manifest row before that task ID can be reused.
 The explicit resolution is written by the actor that answers, not the busy worker: `fm-send`'s `--resolve-key` appends the closing `resolved` line to this home's own copy of the ledger at answer time, which covers crewmates, local secondmates, and remote secondmates identically because a remote mate's escalations reach that local copy through the parent-replies ingest and only the answer message itself crosses the transport.
 This home's answerer close, pending-reply escalation close, and captain-held transfer use the provenance-guarded append owned by `bin/fm-wake-lib.sh`, so they advance the watcher marker only across their own bytes when all earlier bytes were already announced; pending or interleaved foreign bytes fail toward an ordinary wake.
+
+### Pi captain-question prototype
+
+The tracked Pi extension `.pi/extensions/fm-ask-user-question.ts` is a fixture-stage primary-only presentation adapter for one already-open keyed decision.
+It registers the `fm_ask_user_question` tool only when Pi starts with `FM_ASK_USER_QUESTION_FIXTURE=1`, so ordinary Pi sessions retain their current behavior.
+The tool supports free text, single selection, multiple selection with an optional Other value, terminal resize, and structured answered or cancelled results.
+Every call supplies the owning Firstmate home, task ID, decision key, and source generation explicitly.
+Generate that binding with `FM_HOME=/path/to/home bin/fm-ask-user-question.sh generation --home /path/to/home --task <task-id> --key <decision-key>` before invoking the tool in a fixture-enabled primary Pi session.
+The extension verifies the active primary home and session lock, serializes its own modal, validates the binding before display, and asks the adapter to validate it again immediately before delivery.
+Cancellation, missing UI, UI failure, and any binding mismatch return a structured cancelled result without closing the decision.
+A successful answer goes only through `bin/fm-ask-user-question.sh deliver`, which reuses `fm-classify-lib.sh`'s open-decision fold and delegates to `fm-send.sh --resolve-key`.
+The dialog never sends to a pane, rewrites Pi input, or creates durable state of its own.
+
 A turn-ended-only queue row omits its historical status annotation when that status file exactly matches the same seen marker.
 Any direct or remaining historical annotation prints every status line unread at the presentation cursor instead of replaying only the latest line.
 `bin/fm-crew-state.sh <id>` is the cheap current-state read for an actionable heartbeat review: it attributes a no-mistakes run, active or terminal, only when it matches the crew's branch and current code identity, then keeps that run-step authoritative even if the pane has closed.
