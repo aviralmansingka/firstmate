@@ -139,6 +139,29 @@ test_answer_send_closes_open_decision() {
   pass "fm-send --resolve-key: the answer send itself closes the open decision"
 }
 
+test_owner_entry_acknowledges_inside_fm_send() {
+  local dir fb log home marker entry rc
+  dir="$TMP_ROOT/owner-entry"; mkdir -p "$dir"
+  fb=$(make_stubs "$dir"); log="$dir/send.log"; entry="$dir/owner-entry"
+  home=$(setup_home owner-entry)
+  marker='fm-owner-entry-v1:test'
+  fm_write_meta "$home/state/t0.meta" "window=sess:fm-t0" "kind=ship"
+  printf 'needs-decision [key=choice]: choose\n' > "$home/state/t0.status"
+
+  env PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$home" FM_HOME="$home" \
+    FM_SEND_LOG="$log" FM_SEND_SETTLE=0 \
+    FM_ASK_USER_QUESTION_OWNER_ENTRY_FD=3 \
+    FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER="$marker" \
+    "$SEND" t0 --resolve-key choice "answer" 3>"$entry" 2>/dev/null
+  rc=$?
+  expect_code 0 "$rc" "owner-marked answer send should succeed"
+  [ "$(cat "$entry")" = "$marker" ] \
+    || fail "fm-send did not emit its exact owner-entry acknowledgement"
+  [ -f "$home/state/t0.inbox/001.msg" ] \
+    || fail "owner-marked answer did not reach the durable inbox"
+  pass "fm-send emits the opt-in owner-entry acknowledgement from inside its executable"
+}
+
 # The answerer's close is this home's own bookkeeping: it must not re-wake the
 # session that wrote it, while any other writer's later line on the same task
 # still must. Both directions are read through the production seen-signature
@@ -537,6 +560,7 @@ test_flag_misuse_refuses() {
 }
 
 test_answer_send_closes_open_decision
+test_owner_entry_acknowledges_inside_fm_send
 test_answer_close_is_self_announced
 test_colon_first_key_position_is_answerable
 test_answer_starts_work_never_orphans

@@ -28,6 +28,11 @@ fm_session_lock_owned_by_self() {
 SH
   cat > "$fixture/root/bin/fm-send.sh" <<'SH'
 #!/usr/bin/env bash
+if [ -n "${FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER:-}" ]; then
+  [ "${FM_ASK_USER_QUESTION_OWNER_ENTRY_FD:-}" = 3 ] || exit 2
+  printf '%s\n' "$FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER" >&3 || exit 2
+  exec 3>&-
+fi
 printf '%s\0' "$@" >> "$FM_SEND_LOG"
 if [ -n "${FM_SEND_STATE_LOG:-}" ]; then
   printf '%s\n' "${FM_STATE_OVERRIDE:-}" >> "$FM_SEND_STATE_LOG"
@@ -216,6 +221,11 @@ test_pi_state_override_integration() {
   ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$fixture/root/node_modules/@earendil-works/pi-tui"
   ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/root/node_modules/typebox"
   printf '%s\n' '{"type":"module"}' > "$fixture/root/package.json"
+  cat > "$fixture/kill-before-owner.bash" <<'SH'
+if [ "${1:-}" = deliver ]; then
+  trap 'if [[ ${BASH_COMMAND:-} == FM_HOME=*fm-send.sh* ]]; then kill -TERM "$$"; fi' DEBUG
+fi
+SH
   cp "$fixture/home/state/alpha.meta" "$fixture/active-state/alpha.meta"
   cp "$fixture/home/state/alpha.status" "$fixture/active-state/alpha.status"
   printf 'resolved: [key=scope] default tree is closed\n' > "$fixture/home/state/alpha.status"
@@ -322,8 +332,28 @@ if (JSON.stringify(sendCalls()) !== JSON.stringify(expectedCalls)) {
   throw new Error(`background-owner delivery was not exactly once: ${JSON.stringify(sendCalls())}`);
 }
 
+process.env.BASH_ENV = `${process.env.FM_HOME}/../kill-before-owner.bash`;
+const preOwnerTermination = await tool.execute("call", {
+  home: process.env.FM_HOME,
+  taskId: "alpha",
+  decisionKey: "scope",
+  sourceGeneration: process.env.GENERATION,
+  mode: "single",
+  question: "Choose",
+  options: [{ id: "safe", label: "Safe" }],
+}, new AbortController().signal, undefined, { mode: "tui", ui });
+delete process.env.BASH_ENV;
+if (preOwnerTermination.details.reason !== "binding-mismatch" ||
+    preOwnerTermination.details.delivered !== false ||
+    preOwnerTermination.details.answers[0]?.id !== "safe") {
+  throw new Error(`pre-owner termination was misclassified: ${JSON.stringify(preOwnerTermination.details)}`);
+}
+if (JSON.stringify(sendCalls()) !== JSON.stringify(expectedCalls)) {
+  throw new Error(`pre-owner termination reached fm-send: ${JSON.stringify(sendCalls())}`);
+}
+
 process.env.FM_LOCK_REMOVE_META = `${process.env.EXPECTED_STATE}/alpha.meta`;
-process.env.FM_LOCK_REMOVE_META_AT_CHECK = "6";
+process.env.FM_LOCK_REMOVE_META_AT_CHECK = "8";
 const raceResult = await tool.execute("call", {
   home: process.env.FM_HOME,
   taskId: "alpha",

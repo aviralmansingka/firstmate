@@ -175,6 +175,15 @@
 # path do not pay it.
 set -eu
 
+# Fixture-only acknowledgement: write this only after execution has entered the
+# delivery owner, then close it before any owner descendants can inherit it.
+if [ -n "${FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER:-}" ]; then
+  [ "${FM_ASK_USER_QUESTION_OWNER_ENTRY_FD:-}" = 3 ] || exit 1
+  printf '%s\n' "$FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER" >&3 || exit 1
+  exec 3>&-
+  unset FM_ASK_USER_QUESTION_OWNER_ENTRY_FD FM_ASK_USER_QUESTION_OWNER_ENTRY_MARKER
+fi
+
 FM_SEND_ORIGINAL_ARGS=("$@")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
