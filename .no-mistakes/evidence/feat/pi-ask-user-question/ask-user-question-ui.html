@@ -1,0 +1,105 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Firstmate Ask Captain evidence</title><style>
+:root{color-scheme:dark;font-family:ui-sans-serif,system-ui;background:#07111f;color:#dce8f8}body{margin:0;padding:36px;background:radial-gradient(circle at top right,#16345a,#07111f 45%)}main{max-width:1100px;margin:auto}h1{font-size:30px;margin:0 0 8px}.lede{color:#9eb2cd;margin:0 0 26px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:18px}.frame,.result{background:#0c192a;border:1px solid #294568;border-radius:12px;box-shadow:0 14px 35px #0008;overflow:hidden}.frame-title{padding:11px 14px;background:#11243b;color:#7fc4ff;font-weight:700}.frame-title span{float:right;color:#8098b6;font-weight:500}pre{margin:0;padding:16px;white-space:pre-wrap;color:#e9f2ff;font:14px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}.results{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:18px;margin-top:18px}.result{padding:18px}.result h2{font-size:16px;margin:0 0 12px;color:#7fc4ff}.ok{color:#80e6af;font-weight:800}.cancel{color:#ffd082;font-weight:800}code{color:#dce8f8}.meta{margin-top:22px;color:#8098b6;font-size:13px}</style></head><body><main><h1>Ask Captain · executable UI evidence</h1><p class="lede">The tracked Pi extension rendered these modal states, handled resize and Other input, then returned structured results through the fixture-stage owner boundary.</p><div class="grid"><section class="frame"><div class="frame-title">Multi-select · wide terminal <span>72 cols</span></div><pre style="max-width:72ch">────────────────────────────────────────────────────────────────────────
+ Captain decision · alpha · scope
+ Which rollout should Firstmate use?
+ Choose one or more safe paths. Worker text is presentation only.
+
+&gt; [ ] Safe rollout
+      Stage the change behind the fixture boundary.
+  [ ] Fast rollout
+      Use the smallest bounded rollout.
+  Other...
+  Submit selected answers
+
+ ↑↓ navigate · Enter selects · Esc cancels
+────────────────────────────────────────────────────────────────────────</pre></section>
+<section class="frame"><div class="frame-title">Same dialog after terminal resize <span>30 cols</span></div><pre style="max-width:30ch">──────────────────────────────
+ Captain decision · alpha ·
+ scope
+ Which rollout should
+ Firstmate use?
+ Choose one or more safe
+ paths. Worker text is
+ presentation only.
+
+&gt; [ ] Safe rollout
+      Stage the change behind
+      the fixture boundary.
+  [ ] Fast rollout
+      Use the smallest bounded
+      rollout.
+  Other...
+  Submit selected answers
+
+ ↑↓ navigate · Enter selects ·
+ Esc cancels
+──────────────────────────────</pre></section>
+<section class="frame"><div class="frame-title">Other free text in progress <span>72 cols</span></div><pre style="max-width:72ch">────────────────────────────────────────────────────────────────────────
+ Captain decision · alpha · scope
+ Which rollout should Firstmate use?
+ Choose one or more safe paths. Worker text is presentation only.
+
+ Other answer:
+ ──────────────────────────────────────────────────────────────────────
+ custom_pi:c[7m [0m                                                               
+ ──────────────────────────────────────────────────────────────────────
+
+ Enter submits · Esc cancels
+────────────────────────────────────────────────────────────────────────</pre></section>
+<section class="frame"><div class="frame-title">Ready to submit selected + Other <span>72 cols</span></div><pre style="max-width:72ch">────────────────────────────────────────────────────────────────────────
+ Captain decision · alpha · scope
+ Which rollout should Firstmate use?
+ Choose one or more safe paths. Worker text is presentation only.
+
+  [x] Safe rollout
+      Stage the change behind the fixture boundary.
+  [ ] Fast rollout
+      Use the smallest bounded rollout.
+  Other: custom
+&gt; Submit selected answers
+
+ ↑↓ navigate · Enter selects · Esc cancels
+────────────────────────────────────────────────────────────────────────</pre></section>
+<section class="frame"><div class="frame-title">Cancellation · decision remains open <span>72 cols</span></div><pre style="max-width:72ch">────────────────────────────────────────────────────────────────────────
+ Captain decision · beta · cancel
+ Which rollout should Firstmate use?
+ Choose one or more safe paths. Worker text is presentation only.
+
+&gt; Safe rollout
+      Stage the change behind the fixture boundary.
+  Fast rollout
+      Use the smallest bounded rollout.
+
+ ↑↓ navigate · Enter selects · Esc cancels
+────────────────────────────────────────────────────────────────────────</pre></section></div><div class="results"><section class="result"><h2>Answered result</h2><div class="ok">answered · delivered=true</div><pre>{
+  "schema": "fm-captain-answer.v1",
+  "status": "answered",
+  "home": "/tmp/no-mistakes-evidence/01M0Y6MJWQHG63XMF8R1DBMQH8/.ask-user-fixture/home",
+  "taskId": "alpha",
+  "decisionKey": "scope",
+  "sourceGeneration": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "mode": "multi",
+  "answers": [
+    {
+      "type": "option",
+      "id": "safe",
+      "text": "Safe rollout"
+    },
+    {
+      "type": "other",
+      "text": "custom"
+    }
+  ],
+  "delivered": true
+}</pre></section><section class="result"><h2>Cancelled result</h2><div class="cancel">cancelled · delivered=false</div><pre>{
+  "schema": "fm-captain-answer.v1",
+  "status": "cancelled",
+  "home": "/tmp/no-mistakes-evidence/01M0Y6MJWQHG63XMF8R1DBMQH8/.ask-user-fixture/home",
+  "taskId": "beta",
+  "decisionKey": "cancel",
+  "sourceGeneration": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "mode": "single",
+  "answers": [],
+  "delivered": false,
+  "reason": "user"
+}</pre></section><section class="result"><h2>Owner boundary</h2><div class="ok">Exactly one delivery</div><pre>scope	selected safe; other: custom</pre></section></div><div class="meta">Target 3bdc96944fd19bbb6e7f50447df60dc4ea63584f · executable source: .pi/extensions/fm-ask-user-question.ts</div></main></body></html>

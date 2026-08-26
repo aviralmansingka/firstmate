@@ -1,0 +1,145 @@
+{
+  "schema": "fm-ask-user-question-evidence.v1",
+  "commit": "3bdc96944fd19bbb6e7f50447df60dc4ea63584f",
+  "frames": [
+    {
+      "label": "Multi-select · wide terminal",
+      "width": 72,
+      "lines": [
+        "────────────────────────────────────────────────────────────────────────",
+        " Captain decision · alpha · scope",
+        " Which rollout should Firstmate use?",
+        " Choose one or more safe paths. Worker text is presentation only.",
+        "",
+        "> [ ] Safe rollout",
+        "      Stage the change behind the fixture boundary.",
+        "  [ ] Fast rollout",
+        "      Use the smallest bounded rollout.",
+        "  Other...",
+        "  Submit selected answers",
+        "",
+        " ↑↓ navigate · Enter selects · Esc cancels",
+        "────────────────────────────────────────────────────────────────────────"
+      ]
+    },
+    {
+      "label": "Same dialog after terminal resize",
+      "width": 30,
+      "lines": [
+        "──────────────────────────────",
+        " Captain decision · alpha ·",
+        " scope",
+        " Which rollout should",
+        " Firstmate use?",
+        " Choose one or more safe",
+        " paths. Worker text is",
+        " presentation only.",
+        "",
+        "> [ ] Safe rollout",
+        "      Stage the change behind",
+        "      the fixture boundary.",
+        "  [ ] Fast rollout",
+        "      Use the smallest bounded",
+        "      rollout.",
+        "  Other...",
+        "  Submit selected answers",
+        "",
+        " ↑↓ navigate · Enter selects ·",
+        " Esc cancels",
+        "──────────────────────────────"
+      ]
+    },
+    {
+      "label": "Other free text in progress",
+      "width": 72,
+      "lines": [
+        "────────────────────────────────────────────────────────────────────────",
+        " Captain decision · alpha · scope",
+        " Which rollout should Firstmate use?",
+        " Choose one or more safe paths. Worker text is presentation only.",
+        "",
+        " Other answer:",
+        " ──────────────────────────────────────────────────────────────────────",
+        " custom\u001b_pi:c\u0007\u001b[7m \u001b[0m                                                               ",
+        " ──────────────────────────────────────────────────────────────────────",
+        "",
+        " Enter submits · Esc cancels",
+        "────────────────────────────────────────────────────────────────────────"
+      ]
+    },
+    {
+      "label": "Ready to submit selected + Other",
+      "width": 72,
+      "lines": [
+        "────────────────────────────────────────────────────────────────────────",
+        " Captain decision · alpha · scope",
+        " Which rollout should Firstmate use?",
+        " Choose one or more safe paths. Worker text is presentation only.",
+        "",
+        "  [x] Safe rollout",
+        "      Stage the change behind the fixture boundary.",
+        "  [ ] Fast rollout",
+        "      Use the smallest bounded rollout.",
+        "  Other: custom",
+        "> Submit selected answers",
+        "",
+        " ↑↓ navigate · Enter selects · Esc cancels",
+        "────────────────────────────────────────────────────────────────────────"
+      ]
+    },
+    {
+      "label": "Cancellation · decision remains open",
+      "width": 72,
+      "lines": [
+        "────────────────────────────────────────────────────────────────────────",
+        " Captain decision · beta · cancel",
+        " Which rollout should Firstmate use?",
+        " Choose one or more safe paths. Worker text is presentation only.",
+        "",
+        "> Safe rollout",
+        "      Stage the change behind the fixture boundary.",
+        "  Fast rollout",
+        "      Use the smallest bounded rollout.",
+        "",
+        " ↑↓ navigate · Enter selects · Esc cancels",
+        "────────────────────────────────────────────────────────────────────────"
+      ]
+    }
+  ],
+  "answered": {
+    "schema": "fm-captain-answer.v1",
+    "status": "answered",
+    "home": "/tmp/no-mistakes-evidence/01M0Y6MJWQHG63XMF8R1DBMQH8/.ask-user-fixture/home",
+    "taskId": "alpha",
+    "decisionKey": "scope",
+    "sourceGeneration": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mode": "multi",
+    "answers": [
+      {
+        "type": "option",
+        "id": "safe",
+        "text": "Safe rollout"
+      },
+      {
+        "type": "other",
+        "text": "custom"
+      }
+    ],
+    "delivered": true
+  },
+  "cancelled": {
+    "schema": "fm-captain-answer.v1",
+    "status": "cancelled",
+    "home": "/tmp/no-mistakes-evidence/01M0Y6MJWQHG63XMF8R1DBMQH8/.ask-user-fixture/home",
+    "taskId": "beta",
+    "decisionKey": "cancel",
+    "sourceGeneration": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mode": "single",
+    "answers": [],
+    "delivered": false,
+    "reason": "user"
+  },
+  "ownerDeliveries": [
+    "scope\tselected safe; other: custom"
+  ]
+}
