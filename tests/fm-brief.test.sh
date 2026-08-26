@@ -354,6 +354,44 @@ test_no_mistakes_dod_wording() {
   pass "fm-brief.sh: no-mistakes DOD keeps its apostrophe prose, now parse-safe"
 }
 
+# A no-mistakes ask-user finding must be presented through the ask_user_question
+# extension tool AND still append the keyed needs-decision wake line, while the
+# ask-user-authority boundary (the worker never answers its own finding) is
+# preserved. Both halves matter: presentation without the wake line leaves
+# firstmate asleep, and the wake line without presentation buries the question
+# in a status firstmate must relay. The boundary keeps the tool a presentation
+# mechanism, not a license to decide.
+test_no_mistakes_dod_ask_user_presentation() {
+  local home id brief
+  home="$TMP_ROOT/ask-user-presentation-home"
+  mkdir -p "$home/data"
+  id="brief-askuser-e1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode no-mistakes >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "brief was not scaffolded"
+  assert_grep "Call the \`ask_user_question\` extension tool" "$brief" \
+    "no-mistakes DOD did not instruct the worker to present an ask-user finding via ask_user_question"
+  assert_grep "with the finding's options as the tool's options" "$brief" \
+    "no-mistakes DOD did not carry the finding's options into the ask_user_question options"
+  # shellcheck disable=SC2016  # single quotes are deliberate: the backticks and brackets must stay literal for the fixed-string grep
+  assert_grep '`needs-decision [key=<finding-id>]: {one-line summary}`' "$brief" \
+    "no-mistakes DOD did not keep the keyed needs-decision wake line alongside the presentation"
+  assert_grep "so firstmate's watcher wakes firstmate" "$brief" \
+    "no-mistakes DOD did not state the wake-line purpose"
+  assert_grep "presentation mechanism, not a license to decide" "$brief" \
+    "no-mistakes DOD dropped the ask-user-authority boundary on the presentation tool"
+  assert_grep "stop and wait rather than answering your own finding" "$brief" \
+    "no-mistakes DOD did not forbid the worker from answering its own finding"
+  # The status-line + keyed-decision + resolved contract that rule 6 owns must
+  # still be present unchanged, so the watcher and ask-user-authority paths keep
+  # working alongside the new presentation mechanism.
+  assert_grep "escalate to firstmate (rule 6) and stop" "$brief" \
+    "no-mistakes DOD lost the rule-6 escalation cross-reference"
+  assert_grep "feed it to the gate with \`no-mistakes axi respond\`" "$brief" \
+    "no-mistakes DOD lost the decision-feed-back step"
+  pass "fm-brief.sh: no-mistakes ask-user findings present via ask_user_question while keeping the wake line and authority boundary"
+}
+
 test_ship_project_memory_wording() {
   local home id brief
   home="$TMP_ROOT/project-memory-home"
@@ -760,6 +798,7 @@ test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
 test_faster_paths_use_configured_authority_without_stacked_review
 test_no_mistakes_dod_wording
+test_no_mistakes_dod_ask_user_presentation
 test_ship_project_memory_wording
 test_herdr_lab_contract_is_explicit_and_complete
 test_herdr_lab_contract_quotes_foreign_firstmate_path
