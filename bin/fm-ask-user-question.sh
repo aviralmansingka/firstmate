@@ -72,7 +72,8 @@ validate_identity() {
   canonical_home=$(canonical_dir "$home") || die 'home does not exist'
   canonical_active=$(canonical_dir "$active_home") || die 'active FM_HOME does not exist'
   [ "$canonical_home" = "$canonical_active" ] || die 'supplied home is not the active FM_HOME'
-  [ ! -e "$canonical_home/.fm-secondmate-home" ] || die 'captain dialog is primary-only'
+  [ ! -e "$canonical_home/.fm-secondmate-home" ] && [ ! -L "$canonical_home/.fm-secondmate-home" ] \
+    || die 'captain dialog is primary-only'
   home=$canonical_home
   active_state=${FM_STATE_OVERRIDE:-$home/state}
   canonical_state=$(canonical_dir "$active_state") || die 'active state dir does not exist'

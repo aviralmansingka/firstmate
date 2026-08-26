@@ -420,6 +420,14 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
     renderResult(result, _options, theme) {
       const details = result.details as AnswerDetails | undefined;
       if (!details) return new Text(theme.fg("warning", "Captain dialog returned no structured result."), 0, 0);
+      if (details.reason === "delivery-unknown") {
+        const diagnostic = cleanDisplay(details.diagnostic || "Firstmate delivery owner returned no diagnostic.", 500);
+        return new Text(
+          theme.fg("warning", `Decision left open · delivery-unknown\n${diagnostic}\nDo not resend automatically.`),
+          0,
+          0,
+        );
+      }
       const text = details.status === "answered" ? "Captain answer delivered" : `Decision left open · ${details.reason || "cancelled"}`;
       return new Text(theme.fg(details.status === "answered" ? "success" : "warning", text), 0, 0);
     },

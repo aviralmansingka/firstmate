@@ -79,6 +79,22 @@ JS
   [ "$(cat "$fixture/lock-check.log")" = "$(printf '%s\n%s' "$canonical_state" "$canonical_state")" ] \
     || fail "adapter did not delegate validation and delivery lock proof to the shared owner"
 
+  cp "$fixture/send.log" "$fixture/send-before-marker.log"
+  ln -s "$fixture/missing-secondmate-marker" "$fixture/home/.fm-secondmate-home"
+  if FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
+    validate --home "$fixture/home" --task alpha --key scope --generation "$generation" >/dev/null 2>&1; then
+    fail "dangling secondmate marker bypassed pre-display primary validation"
+  fi
+  if FM_HOME="$fixture/home" FM_SEND_LOG="$fixture/send.log" \
+    "$fixture/root/bin/fm-ask-user-question.sh" deliver \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" \
+      --answer blocked >/dev/null 2>&1; then
+    fail "dangling secondmate marker bypassed pre-delivery primary validation"
+  fi
+  cmp -s "$fixture/send-before-marker.log" "$fixture/send.log" \
+    || fail "dangling secondmate marker reached the delivery owner"
+  rm "$fixture/home/.fm-secondmate-home"
+
   printf 'working: unrelated append\n' >> "$fixture/home/state/alpha.status"
   if FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
     validate --home "$fixture/home" --task alpha --key scope --generation "$generation" >/dev/null 2>&1; then
@@ -454,6 +470,13 @@ if (result.details.reason !== "delivery-unknown" || result.details.delivered !==
     typeof result.details.diagnostic !== "string" || result.details.diagnostic.length !== 500 ||
     /[\u0000-\u001f\u007f-\u009f]/.test(result.details.diagnostic) || deliveryCount() !== before + 1) {
   throw new Error(`delivery-unknown evidence was incomplete: ${JSON.stringify(result.details)}`);
+}
+const renderedUnknownLines = tool.renderResult(result, { expanded: false }, theme).render(1000);
+const renderedUnknown = renderedUnknownLines.join("\n");
+if (!renderedUnknown.includes("fm-send: answer queued but decision close failed") ||
+    !renderedUnknown.includes("Do not resend automatically.") ||
+    renderedUnknownLines.some((line) => /[\u0000-\u001f\u007f-\u009f]/.test(line))) {
+  throw new Error(`delivery-unknown evidence was hidden or unsafe: ${JSON.stringify(renderedUnknownLines)}`);
 }
 
 behavior = "throw";
