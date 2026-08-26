@@ -38,6 +38,9 @@ if [ "${FM_SEND_FAIL:-0}" = 1 ]; then
   printf '\001fm-send: answer queued but decision close failed\n' >&2
   exit 9
 fi
+if [ "${FM_SEND_BACKGROUND_DESCENDANT:-0}" = 1 ]; then
+  sleep 5 </dev/null >/dev/null 2>&1 &
+fi
 SH
   chmod +x "$fixture/root/bin/fm-ask-user-question.sh" "$fixture/root/bin/fm-send.sh"
   printf 'task_id=alpha\nbackend=tmux\n' > "$fixture/home/state/alpha.meta"
@@ -278,15 +281,15 @@ const result = await tool.execute("call", {
 if (result.details.status !== "answered" || result.details.answers[0]?.id !== "safe") {
   throw new Error(`override-backed question was not answered: ${JSON.stringify(result.details)}`);
 }
-const args = readFileSync(process.env.FM_SEND_LOG, "utf8").split("\0").filter(Boolean);
-const expectedArgs = [
+const expectedCall = [
   "alpha",
   "--resolve-key",
   "scope",
   "Captain answer: selected safe",
 ];
-if (JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
-  throw new Error(`fm-send received wrong calls: ${JSON.stringify(args)}`);
+const sendCalls = () => readFileSync(process.env.FM_SEND_LOG, "utf8").split("\0").filter(Boolean);
+if (JSON.stringify(sendCalls()) !== JSON.stringify(expectedCall)) {
+  throw new Error(`fm-send received wrong calls: ${JSON.stringify(sendCalls())}`);
 }
 const states = readFileSync(process.env.FM_SEND_STATE_LOG, "utf8").trim().split("\n");
 if (states.length !== 1 || states[0] !== process.env.EXPECTED_STATE) {
@@ -297,8 +300,30 @@ if (lockChecks.length !== 2 || lockChecks.some((state) => state !== process.env.
   throw new Error(`shared lock owner received wrong state: ${JSON.stringify(lockChecks)}`);
 }
 
+process.env.FM_SEND_BACKGROUND_DESCENDANT = "1";
+const descendantResult = await Promise.race([
+  tool.execute("call", {
+    home: process.env.FM_HOME,
+    taskId: "alpha",
+    decisionKey: "scope",
+    sourceGeneration: process.env.GENERATION,
+    mode: "single",
+    question: "Choose",
+    options: [{ id: "safe", label: "Safe" }],
+  }, new AbortController().signal, undefined, { mode: "tui", ui }),
+  new Promise((_, reject) => setTimeout(() => reject(new Error("delivery waited for the owner's background descendant")), 1000)),
+]);
+delete process.env.FM_SEND_BACKGROUND_DESCENDANT;
+if (descendantResult.details.status !== "answered" || descendantResult.details.delivered !== true) {
+  throw new Error(`background-owner delivery was not answered: ${JSON.stringify(descendantResult.details)}`);
+}
+const expectedCalls = [...expectedCall, ...expectedCall];
+if (JSON.stringify(sendCalls()) !== JSON.stringify(expectedCalls)) {
+  throw new Error(`background-owner delivery was not exactly once: ${JSON.stringify(sendCalls())}`);
+}
+
 process.env.FM_LOCK_REMOVE_META = `${process.env.EXPECTED_STATE}/alpha.meta`;
-process.env.FM_LOCK_REMOVE_META_AT_CHECK = "4";
+process.env.FM_LOCK_REMOVE_META_AT_CHECK = "6";
 const raceResult = await tool.execute("call", {
   home: process.env.FM_HOME,
   taskId: "alpha",
@@ -316,7 +341,7 @@ if (renderedRace.includes("Do not resend automatically.")) {
   throw new Error(`pre-owner read race showed a no-resend warning: ${renderedRace}`);
 }
 const finalArgs = readFileSync(process.env.FM_SEND_LOG, "utf8").split("\0").filter(Boolean);
-if (JSON.stringify(finalArgs) !== JSON.stringify(expectedArgs)) {
+if (JSON.stringify(finalArgs) !== JSON.stringify(expectedCalls)) {
   throw new Error(`pre-owner read race reached fm-send: ${JSON.stringify(finalArgs)}`);
 }
 JS
