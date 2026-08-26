@@ -17,6 +17,9 @@ make_adapter_fixture() {
   cat > "$fixture/root/bin/fm-send.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\0' "$@" >> "$FM_SEND_LOG"
+if [ -n "${FM_SEND_STATE_LOG:-}" ]; then
+  printf '%s\n' "${FM_STATE_OVERRIDE:-}" >> "$FM_SEND_STATE_LOG"
+fi
 SH
   chmod +x "$fixture/root/bin/fm-ask-user-question.sh" "$fixture/root/bin/fm-send.sh"
   printf 'task_id=alpha\nbackend=tmux\n' > "$fixture/home/state/alpha.meta"
@@ -84,6 +87,42 @@ JS
   pass "ask-user adapter binds home, task, key, and generation and delegates one literal answer through fm-send"
 }
 
+test_state_override_binding() {
+  local fixture state_a state_b generation canonical_state
+  fixture="$TMP_ROOT/state-override"
+  make_adapter_fixture "$fixture"
+  state_a="$fixture/state-a"
+  state_b="$fixture/state-b"
+  mkdir -p "$state_a" "$state_b"
+  cp "$fixture/home/state/alpha.meta" "$state_a/alpha.meta"
+  cp "$fixture/home/state/alpha.status" "$state_a/alpha.status"
+  cp "$state_a/alpha.meta" "$state_b/alpha.meta"
+  cp "$state_a/alpha.status" "$state_b/alpha.status"
+  printf 'resolved: [key=scope] default tree is closed\n' > "$fixture/home/state/alpha.status"
+
+  generation=$(FM_HOME="$fixture/home" FM_STATE_OVERRIDE="$state_a" \
+    "$fixture/root/bin/fm-ask-user-question.sh" generation \
+      --home "$fixture/home" --task alpha --key scope) \
+    || fail "source generation ignored the active state override"
+
+  FM_HOME="$fixture/home" FM_STATE_OVERRIDE="$state_a" \
+    FM_SEND_LOG="$fixture/send.log" FM_SEND_STATE_LOG="$fixture/send-state.log" \
+    "$fixture/root/bin/fm-ask-user-question.sh" deliver \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" \
+      --answer Safe >/dev/null \
+    || fail "delivery did not use the active state override"
+  canonical_state=$(cd "$state_a" && pwd -P)
+  [ "$(cat "$fixture/send-state.log")" = "$canonical_state" ] \
+    || fail "fm-send did not inherit the canonical active state path"
+
+  if FM_HOME="$fixture/home" FM_STATE_OVERRIDE="$state_b" \
+    "$fixture/root/bin/fm-ask-user-question.sh" validate \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" >/dev/null 2>&1; then
+    fail "generation from a different canonical state tree was accepted"
+  fi
+  pass "ask-user adapter binds generation, validation, and delivery to one canonical state override"
+}
+
 test_pi_modal_contract() {
   local fixture out status
   if ! command -v node >/dev/null 2>&1 || [ ! -f "$PI_PACKAGE_DIR/package.json" ]; then
@@ -91,13 +130,15 @@ test_pi_modal_contract() {
     return 0
   fi
   fixture="$TMP_ROOT/pi"
-  mkdir -p "$fixture/project/.pi/extensions" "$fixture/project/node_modules/@earendil-works" "$fixture/home/state"
+  mkdir -p "$fixture/project/.pi/extensions" "$fixture/project/node_modules/@earendil-works" \
+    "$fixture/home/state" "$fixture/active-state"
   cp "$ROOT/.pi/extensions/fm-ask-user-question.ts" "$fixture/project/.pi/extensions/fm-ask-user-question.ts"
   ln -s "$PI_PACKAGE_DIR" "$fixture/project/node_modules/@earendil-works/pi-coding-agent"
   ln -s "$PI_PACKAGE_DIR/node_modules/@earendil-works/pi-tui" "$fixture/project/node_modules/@earendil-works/pi-tui"
   ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/project/node_modules/typebox"
   printf '%s\n' '{"type":"module"}' > "$fixture/project/package.json"
-  printf '%s\n' "$$" > "$fixture/home/state/.lock"
+  printf '%s\n' 1 > "$fixture/home/state/.lock"
+  printf '%s\n' "$$" > "$fixture/active-state/.lock"
   cat > "$fixture/adapter.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\0' "$@" >> "$FM_ASK_LOG"
@@ -122,6 +163,7 @@ SH
 
   out=$(cd "$fixture/project" && \
     FM_HOME="$fixture/home" \
+    FM_STATE_OVERRIDE="$fixture/active-state" \
     FM_ASK_USER_QUESTION_FIXTURE=1 \
     FM_ASK_USER_QUESTION_ADAPTER="$fixture/adapter.sh" \
     FM_ASK_LOG="$fixture/adapter.log" \
@@ -264,12 +306,12 @@ result = await execute({ ...base, decisionKey: "wrong-generation" });
 if (result.details.reason !== "binding-mismatch" || customCalls !== before) {
   throw new Error("generation mismatch reached the modal");
 }
-writeFileSync(`${process.env.FM_HOME}/state/.lock`, "1\n");
+writeFileSync(`${process.env.FM_STATE_OVERRIDE}/.lock`, "1\n");
 result = await execute({ ...base, decisionKey: "wrong-lock" });
 if (result.details.reason !== "binding-mismatch" || customCalls !== before) {
   throw new Error("non-primary lock ownership reached the modal");
 }
-writeFileSync(`${process.env.FM_HOME}/state/.lock`, `${process.pid}\n`);
+writeFileSync(`${process.env.FM_STATE_OVERRIDE}/.lock`, `${process.pid}\n`);
 
 behavior = "single";
 before = deliveryCount();
@@ -342,5 +384,6 @@ JS
 }
 
 test_binding_and_delivery_adapter
+test_state_override_binding
 test_pi_modal_contract
 test_fixture_gate

@@ -56,7 +56,7 @@ parse_binding() {
 }
 
 validate_identity() {
-  local active_home canonical_home canonical_active
+  local active_home active_state canonical_home canonical_active canonical_state
   [ -n "$home" ] || die '--home is required'
   [ -n "$task" ] || die '--task is required'
   [ -n "$key" ] || die '--key is required'
@@ -72,8 +72,11 @@ validate_identity() {
   [ "$canonical_home" = "$canonical_active" ] || die 'supplied home is not the active FM_HOME'
   [ ! -e "$canonical_home/.fm-secondmate-home" ] || die 'captain dialog is primary-only'
   home=$canonical_home
-  meta="$home/state/$task.meta"
-  status="$home/state/$task.status"
+  active_state=${FM_STATE_OVERRIDE:-$home/state}
+  canonical_state=$(canonical_dir "$active_state") || die 'active state dir does not exist'
+  state=$canonical_state
+  meta="$state/$task.meta"
+  status="$state/$task.status"
   [ -f "$meta" ] && [ -r "$meta" ] && [ ! -L "$meta" ] || die 'task metadata is missing or unsafe'
   [ -f "$status" ] && [ -r "$status" ] && [ ! -L "$status" ] || die 'task status is missing or unsafe'
 }
@@ -94,7 +97,7 @@ EOF
 current_generation() {
   local digest
   digest=$({
-    printf 'home\0%s\0task\0%s\0key\0%s\0meta\0' "$home" "$task" "$key"
+    printf 'home\0%s\0state\0%s\0task\0%s\0key\0%s\0meta\0' "$home" "$state" "$task" "$key"
     cat "$meta"
     printf '\0status\0'
     cat "$status"
@@ -132,7 +135,8 @@ case "$command" in
     [ -n "$generation" ] || die '--generation is required'
     [ -n "$answer" ] || die '--answer is required'
     validate_generation
-    "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"
+    FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
+      "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"
     ;;
   *) die "unknown command: $command" ;;
 esac

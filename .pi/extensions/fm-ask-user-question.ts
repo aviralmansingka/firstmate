@@ -19,6 +19,13 @@ const fixtureEnabled = process.env.FM_ASK_USER_QUESTION_FIXTURE === "1";
 const extensionFile = fileURLToPath(import.meta.url);
 const root = resolve(dirname(extensionFile), "../..");
 const activeHome = process.env.FM_HOME || process.env.FM_ROOT_OVERRIDE || root;
+const configuredState = process.env.FM_STATE_OVERRIDE || `${activeHome}/state`;
+let activeState = configuredState;
+try {
+  activeState = realpathSync(configuredState);
+} catch {
+  activeState = configuredState;
+}
 const adapter = process.env.FM_ASK_USER_QUESTION_ADAPTER || `${root}/bin/fm-ask-user-question.sh`;
 
 const OptionSchema = Type.Object({
@@ -133,10 +140,10 @@ function parentPid(pid: string): string {
   return result.status === 0 ? result.stdout.trim() : "";
 }
 
-function ownsPrimaryLock(home: string): boolean {
+function ownsPrimaryLock(state: string): boolean {
   let lockPid = "";
   try {
-    lockPid = readFileSync(`${home}/state/.lock`, "utf8").trim();
+    lockPid = readFileSync(`${state}/.lock`, "utf8").trim();
   } catch {
     return false;
   }
@@ -154,7 +161,7 @@ function primaryBoundary(home: string): boolean {
   try {
     const canonicalHome = realpathSync(home);
     const canonicalActive = realpathSync(activeHome);
-    return canonicalHome === canonicalActive && !existsSync(`${canonicalHome}/.fm-secondmate-home`) && ownsPrimaryLock(canonicalHome);
+    return canonicalHome === canonicalActive && !existsSync(`${canonicalHome}/.fm-secondmate-home`) && ownsPrimaryLock(activeState);
   } catch {
     return false;
   }
@@ -171,7 +178,7 @@ function runAdapter(command: "validate" | "deliver", params: QuestionParams, ans
   if (answer !== undefined) args.push("--answer", answer);
   return spawnSync(adapter, args, {
     encoding: "utf8",
-    env: { ...process.env, FM_HOME: activeHome },
+    env: { ...process.env, FM_HOME: activeHome, FM_STATE_OVERRIDE: activeState },
     timeout: 10_000,
   });
 }
