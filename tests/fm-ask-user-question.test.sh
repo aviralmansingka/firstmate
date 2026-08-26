@@ -540,6 +540,12 @@ if (result.details.reason !== "ui-unavailable" || customCalls !== before) {
 }
 
 before = customCalls;
+const adapterCalls = adapterLog().length;
+result = await execute({ ...base, home: `${base.home}\0invalid` });
+if (result.details.reason !== "binding-mismatch" || result.details.delivered !== false ||
+    customCalls !== before || adapterLog().length !== adapterCalls) {
+  throw new Error(`process-unsafe home did not resolve before spawn or UI: ${JSON.stringify(result.details)}`);
+}
 result = await execute({ ...base, taskId: "wrong-task" });
 if (result.details.reason !== "binding-mismatch" || customCalls !== before) {
   throw new Error("task mismatch reached the modal");

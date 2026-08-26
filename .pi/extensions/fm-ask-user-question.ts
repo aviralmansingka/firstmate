@@ -218,6 +218,7 @@ function deliverAdapter(params: QuestionParams, answer: string): Promise<Deliver
 }
 
 function normalize(params: QuestionParams): QuestionParams | undefined {
+  if (params.home.includes("\0")) return undefined;
   if (!/^[A-Za-z0-9._-]+$/.test(params.taskId) || !/^[A-Za-z0-9._-]+$/.test(params.decisionKey)) return undefined;
   if (!/^sha256:[0-9a-f]{64}$/.test(params.sourceGeneration)) return undefined;
   const question = cleanDisplay(params.question, 500);
