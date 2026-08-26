@@ -18,6 +18,10 @@ make_adapter_fixture() {
 fm_session_lock_owned_by_self() {
   if [ -n "${FM_LOCK_CHECK_LOG:-}" ]; then
     printf '%s\n' "$1" >> "$FM_LOCK_CHECK_LOG"
+    if [ -n "${FM_LOCK_REMOVE_META_AT_CHECK:-}" ] \
+      && [ "$(wc -l < "$FM_LOCK_CHECK_LOG")" -eq "$FM_LOCK_REMOVE_META_AT_CHECK" ]; then
+      rm -f "$FM_LOCK_REMOVE_META"
+    fi
   fi
   [ "$(cat "$1/.lock" 2>/dev/null)" = owned ]
 }
@@ -291,6 +295,29 @@ if (states.length !== 1 || states[0] !== process.env.EXPECTED_STATE) {
 const lockChecks = readFileSync(process.env.FM_LOCK_CHECK_LOG, "utf8").trim().split("\n");
 if (lockChecks.length !== 2 || lockChecks.some((state) => state !== process.env.EXPECTED_STATE)) {
   throw new Error(`shared lock owner received wrong state: ${JSON.stringify(lockChecks)}`);
+}
+
+process.env.FM_LOCK_REMOVE_META = `${process.env.EXPECTED_STATE}/alpha.meta`;
+process.env.FM_LOCK_REMOVE_META_AT_CHECK = "4";
+const raceResult = await tool.execute("call", {
+  home: process.env.FM_HOME,
+  taskId: "alpha",
+  decisionKey: "scope",
+  sourceGeneration: process.env.GENERATION,
+  mode: "single",
+  question: "Choose",
+  options: [{ id: "safe", label: "Safe" }],
+}, new AbortController().signal, undefined, { mode: "tui", ui });
+if (raceResult.details.reason !== "binding-mismatch" || raceResult.details.delivered !== false) {
+  throw new Error(`pre-owner read race was misclassified: ${JSON.stringify(raceResult.details)}`);
+}
+const renderedRace = tool.renderResult(raceResult, { expanded: false }, theme).render(1000).join("\n");
+if (renderedRace.includes("Do not resend automatically.")) {
+  throw new Error(`pre-owner read race showed a no-resend warning: ${renderedRace}`);
+}
+const finalArgs = readFileSync(process.env.FM_SEND_LOG, "utf8").split("\0").filter(Boolean);
+if (JSON.stringify(finalArgs) !== JSON.stringify(expectedArgs)) {
+  throw new Error(`pre-owner read race reached fm-send: ${JSON.stringify(finalArgs)}`);
 }
 JS
   )

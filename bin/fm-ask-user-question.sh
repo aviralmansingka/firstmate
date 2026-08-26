@@ -127,7 +127,11 @@ command=${1:-}
 [ -n "$command" ] || die 'a command is required'
 case "$command" in
   generation|validate) ;;
-  deliver) failure_status=$PREFLIGHT_FAILURE ;;
+  deliver)
+    failure_status=$PREFLIGHT_FAILURE
+    set -E
+    trap 'exit "$PREFLIGHT_FAILURE"' ERR
+    ;;
   *) die "unknown command: $command" ;;
 esac
 shift
@@ -154,6 +158,7 @@ case "$command" in
     require_primary_lock
     validate_generation
     [ -x "$ROOT/bin/fm-send.sh" ] || die 'delivery owner is missing or not executable'
+    trap - ERR
     if FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
       "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"; then
       :
