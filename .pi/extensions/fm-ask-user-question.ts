@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { realpathSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -82,6 +82,7 @@ type AnswerDetails = {
   answers: AnswerItem[];
   delivered: boolean | "unknown";
   reason?: "user" | "aborted" | "ui-unavailable" | "ui-failure" | "binding-mismatch" | "delivery-unknown";
+  diagnostic?: string;
 };
 
 type ModalResult = {
@@ -120,6 +121,8 @@ function cancelled(
   reason: AnswerDetails["reason"],
   text: string,
   delivered: false | "unknown" = false,
+  answers: AnswerItem[] = [],
+  diagnostic?: string,
 ) {
   const details: AnswerDetails = {
     schema: "fm-captain-answer.v1",
@@ -129,43 +132,12 @@ function cancelled(
     decisionKey: params.decisionKey,
     sourceGeneration: params.sourceGeneration,
     mode: params.mode,
-    answers: [],
+    answers,
     delivered,
     reason,
+    ...(diagnostic ? { diagnostic } : {}),
   };
   return { content: [{ type: "text" as const, text }], details };
-}
-
-function parentPid(pid: string): string {
-  const result = spawnSync("ps", ["-o", "ppid=", "-p", pid], { encoding: "utf8" });
-  return result.status === 0 ? result.stdout.trim() : "";
-}
-
-function ownsPrimaryLock(state: string): boolean {
-  let lockPid = "";
-  try {
-    lockPid = readFileSync(`${state}/.lock`, "utf8").trim();
-  } catch {
-    return false;
-  }
-  if (!/^[0-9]+$/.test(lockPid) || lockPid === "1") return false;
-  let pid = String(process.pid);
-  for (let depth = 0; depth < 8; depth += 1) {
-    if (pid === lockPid) return true;
-    pid = parentPid(pid);
-    if (!pid || pid === "1") return false;
-  }
-  return false;
-}
-
-function primaryBoundary(home: string): boolean {
-  try {
-    const canonicalHome = realpathSync(home);
-    const canonicalActive = realpathSync(activeHome);
-    return canonicalHome === canonicalActive && !existsSync(`${canonicalHome}/.fm-secondmate-home`) && ownsPrimaryLock(activeState);
-  } catch {
-    return false;
-  }
 }
 
 function runAdapter(command: "validate" | "deliver", params: QuestionParams, answer?: string) {
@@ -203,10 +175,18 @@ function normalize(params: QuestionParams): QuestionParams | undefined {
 
 function deliveryText(answers: AnswerItem[]): string {
   return answers.map((answer) => {
-    if (answer.type === "option") return `selected ${answer.id}: ${answer.text}`;
+    if (answer.type === "option") return `selected ${answer.id}`;
     if (answer.type === "other") return `other: ${answer.text}`;
     return answer.text;
   }).join("; ");
+}
+
+function deliveryDiagnostic(delivery: ReturnType<typeof runAdapter>): string {
+  const output = [delivery.stderr, delivery.stdout, delivery.error?.message]
+    .filter(Boolean)
+    .map(String)
+    .join(" ");
+  return cleanDisplay(output, 500) || `Firstmate delivery owner exited with status ${delivery.status ?? "unknown"}.`;
 }
 
 function showQuestion(params: QuestionParams, signal: AbortSignal, ctx: ExtensionContext) {
@@ -395,7 +375,6 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
 
       return withPrimaryModal(async () => {
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before display.");
-        if (!primaryBoundary(params.home)) return cancelled(params, "binding-mismatch", "Captain dialog primary binding no longer matches.");
         const validation = runAdapter("validate", params);
         if (validation.status !== 0) return cancelled(params, "binding-mismatch", "Captain dialog source binding no longer matches.");
 
@@ -407,7 +386,6 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
         }
         if (!modal || modal.cancelled) return cancelled(params, modal?.reason || "ui-failure", "Captain left the decision open.");
         if (abortSignal.aborted) return cancelled(params, "aborted", "Captain dialog was cancelled before delivery.");
-        if (!primaryBoundary(params.home)) return cancelled(params, "binding-mismatch", "Captain dialog primary binding changed before delivery.");
 
         const delivery = runAdapter("deliver", params, deliveryText(modal.answers));
         if (delivery.status !== 0) {
@@ -416,6 +394,8 @@ export default function askUserQuestion(pi: ExtensionAPI): void {
             "delivery-unknown",
             "Captain answer delivery could not be confirmed; the decision remains open. Do not resend automatically.",
             "unknown",
+            modal.answers,
+            deliveryDiagnostic(delivery),
           );
         }
         const details: AnswerDetails = {

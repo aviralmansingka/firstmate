@@ -59,9 +59,9 @@ It registers the `fm_ask_user_question` tool only when Pi starts with `FM_ASK_US
 The tool supports free text, single selection, multiple selection with an optional Other value, terminal resize, and structured answered or cancelled results.
 Every call supplies the owning Firstmate home, task ID, decision key, and source generation explicitly.
 Generate that binding with `FM_HOME=/path/to/home bin/fm-ask-user-question.sh generation --home /path/to/home --task <task-id> --key <decision-key>` before invoking the tool in a fixture-enabled primary Pi session.
-The extension verifies the active primary home and session lock, serializes its own modal, validates the binding before display, and asks the adapter to validate it again immediately before delivery.
-Cancellation, missing UI, UI failure, and any binding mismatch return a structured cancelled result without closing the decision.
-A successful answer goes only through `bin/fm-ask-user-question.sh deliver`, which reuses `fm-classify-lib.sh`'s open-decision fold and delegates to `fm-send.sh --resolve-key`.
+The extension serializes its own modal and uses the adapter before display and during delivery to verify the active primary home, prove shared session-lock ownership, and validate the binding against one canonical active state directory.
+Cancellation, missing UI, UI failure, and any binding mismatch return a structured cancelled result without closing the decision; an unconfirmed delivery preserves the selected answer and a bounded owner diagnostic without retrying.
+A successful answer goes only through `bin/fm-ask-user-question.sh deliver`, which reuses `fm-classify-lib.sh`'s open-decision fold and delegates to `fm-send.sh --resolve-key`; selected option labels remain presentation data while delivery carries their stable IDs.
 The dialog never sends to a pane, rewrites Pi input, or creates durable state of its own.
 
 A turn-ended-only queue row omits its historical status annotation when that status file exactly matches the same seen marker.

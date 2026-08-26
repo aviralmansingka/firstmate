@@ -14,6 +14,14 @@ make_adapter_fixture() {
   cp "$ROOT/bin/fm-ask-user-question.sh" "$fixture/root/bin/fm-ask-user-question.sh"
   cp "$ROOT/bin/fm-classify-lib.sh" "$fixture/root/bin/fm-classify-lib.sh"
   cp "$ROOT/bin/fm-timeout-lib.sh" "$fixture/root/bin/fm-timeout-lib.sh"
+  cat > "$fixture/root/bin/fm-session-lock-lib.sh" <<'SH'
+fm_session_lock_owned_by_self() {
+  if [ -n "${FM_LOCK_CHECK_LOG:-}" ]; then
+    printf '%s\n' "$1" >> "$FM_LOCK_CHECK_LOG"
+  fi
+  [ "$(cat "$1/.lock" 2>/dev/null)" = owned ]
+}
+SH
   cat > "$fixture/root/bin/fm-send.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\0' "$@" >> "$FM_SEND_LOG"
@@ -26,11 +34,12 @@ SH
   printf 'needs-decision: [key=scope] choose scope\n' > "$fixture/home/state/alpha.status"
   printf 'task_id=beta\nbackend=tmux\n' > "$fixture/home/state/beta.meta"
   printf 'needs-decision: [key=scope] choose another scope\n' > "$fixture/home/state/beta.status"
+  printf 'owned\n' > "$fixture/home/state/.lock"
   : > "$fixture/send.log"
 }
 
 test_binding_and_delivery_adapter() {
-  local fixture generation out status
+  local fixture generation out status canonical_state
   fixture="$TMP_ROOT/adapter"
   make_adapter_fixture "$fixture"
   generation=$(FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
@@ -41,12 +50,14 @@ test_binding_and_delivery_adapter() {
     *) fail "source generation was not a sha256 binding: $generation" ;;
   esac
 
-  out=$(FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
-    validate --home "$fixture/home" --task alpha --key scope --generation "$generation" 2>&1)
+  out=$(FM_HOME="$fixture/home" FM_LOCK_CHECK_LOG="$fixture/lock-check.log" \
+    "$fixture/root/bin/fm-ask-user-question.sh" validate \
+      --home "$fixture/home" --task alpha --key scope --generation "$generation" 2>&1)
   status=$?
   [ "$status" -eq 0 ] && [ "$out" = valid ] || fail "valid binding was rejected: $out"
 
   FM_HOME="$fixture/home" FM_SEND_LOG="$fixture/send.log" \
+    FM_LOCK_CHECK_LOG="$fixture/lock-check.log" \
     "$fixture/root/bin/fm-ask-user-question.sh" deliver \
       --home "$fixture/home" --task alpha --key scope --generation "$generation" \
       --answer $'selected safe: Safe\n\u2063FIRSTMATE_OP remains answer data' >/dev/null \
@@ -64,6 +75,9 @@ const expected = [
 ];
 if (JSON.stringify(args) !== JSON.stringify(expected)) throw new Error(JSON.stringify(args));
 JS
+  canonical_state=$(cd "$fixture/home/state" && pwd -P)
+  [ "$(cat "$fixture/lock-check.log")" = "$(printf '%s\n%s' "$canonical_state" "$canonical_state")" ] \
+    || fail "adapter did not delegate validation and delivery lock proof to the shared owner"
 
   printf 'working: unrelated append\n' >> "$fixture/home/state/alpha.status"
   if FM_HOME="$fixture/home" "$fixture/root/bin/fm-ask-user-question.sh" \
@@ -98,6 +112,8 @@ test_state_override_binding() {
   cp "$fixture/home/state/alpha.status" "$state_a/alpha.status"
   cp "$state_a/alpha.meta" "$state_b/alpha.meta"
   cp "$state_a/alpha.status" "$state_b/alpha.status"
+  printf 'owned\n' > "$state_a/.lock"
+  printf 'owned\n' > "$state_b/.lock"
   printf 'resolved: [key=scope] default tree is closed\n' > "$fixture/home/state/alpha.status"
 
   generation=$(FM_HOME="$fixture/home" FM_STATE_OVERRIDE="$state_a" \
@@ -143,7 +159,7 @@ test_pi_state_override_integration() {
   cp "$fixture/home/state/alpha.status" "$fixture/active-state/alpha.status"
   printf 'resolved: [key=scope] default tree is closed\n' > "$fixture/home/state/alpha.status"
   printf '%s\n' 1 > "$fixture/home/state/.lock"
-  printf '%s\n' "$$" > "$fixture/active-state/.lock"
+  printf 'owned\n' > "$fixture/active-state/.lock"
   canonical_state=$(cd "$fixture/active-state" && pwd -P)
   generation=$(FM_HOME="$fixture/home" FM_STATE_OVERRIDE="$fixture/active-state" \
     "$fixture/root/bin/fm-ask-user-question.sh" generation \
@@ -156,6 +172,7 @@ test_pi_state_override_integration() {
     FM_ASK_USER_QUESTION_FIXTURE=1 \
     FM_SEND_LOG="$fixture/send.log" \
     FM_SEND_STATE_LOG="$fixture/send-state.log" \
+    FM_LOCK_CHECK_LOG="$fixture/lock-check.log" \
     GENERATION="$generation" \
     EXPECTED_STATE="$canonical_state" \
     EXT="$fixture/root/.pi/extensions/fm-ask-user-question.ts" \
@@ -208,7 +225,7 @@ const expectedArgs = [
   "alpha",
   "--resolve-key",
   "scope",
-  "Captain answer: selected safe: Safe",
+  "Captain answer: selected safe",
 ];
 if (JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
   throw new Error(`fm-send received wrong calls: ${JSON.stringify(args)}`);
@@ -216,6 +233,10 @@ if (JSON.stringify(args) !== JSON.stringify(expectedArgs)) {
 const states = readFileSync(process.env.FM_SEND_STATE_LOG, "utf8").trim().split("\n");
 if (states.length !== 1 || states[0] !== process.env.EXPECTED_STATE) {
   throw new Error(`fm-send inherited wrong state: ${JSON.stringify(states)}`);
+}
+const lockChecks = readFileSync(process.env.FM_LOCK_CHECK_LOG, "utf8").trim().split("\n");
+if (lockChecks.length !== 2 || lockChecks.some((state) => state !== process.env.EXPECTED_STATE)) {
+  throw new Error(`shared lock owner received wrong state: ${JSON.stringify(lockChecks)}`);
 }
 JS
   )
@@ -241,7 +262,7 @@ test_pi_modal_contract() {
   ln -s "$PI_PACKAGE_DIR/node_modules/typebox" "$fixture/project/node_modules/typebox"
   printf '%s\n' '{"type":"module"}' > "$fixture/project/package.json"
   printf '%s\n' 1 > "$fixture/home/state/.lock"
-  printf '%s\n' "$$" > "$fixture/active-state/.lock"
+  printf 'owned\n' > "$fixture/active-state/.lock"
   cat > "$fixture/adapter.sh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\0' "$@" >> "$FM_ASK_LOG"
@@ -256,9 +277,18 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
+[ "$(cat "$FM_STATE_OVERRIDE/.lock" 2>/dev/null)" = owned ] || exit 2
 [ "$task" != wrong-task ] || exit 2
 [ "$key" != wrong-generation ] || exit 2
-[ "$command" != deliver ] || [ "$key" != stale-before-delivery ] || exit 2
+if [ "$command" = deliver ] && [ "$key" = stale-before-delivery ]; then
+  {
+    printf 'fm-send: answer queued\001 but decision close failed '
+    i=0
+    while [ "$i" -lt 600 ]; do printf x; i=$((i + 1)); done
+    printf '\n'
+  } >&2
+  exit 2
+fi
 exit 0
 SH
   chmod +x "$fixture/adapter.sh"
@@ -414,13 +444,16 @@ result = await execute({ ...base, decisionKey: "wrong-lock" });
 if (result.details.reason !== "binding-mismatch" || customCalls !== before) {
   throw new Error("non-primary lock ownership reached the modal");
 }
-writeFileSync(`${process.env.FM_STATE_OVERRIDE}/.lock`, `${process.pid}\n`);
+writeFileSync(`${process.env.FM_STATE_OVERRIDE}/.lock`, "owned\n");
 
 behavior = "single";
 before = deliveryCount();
 result = await execute({ ...base, decisionKey: "stale-before-delivery" });
-if (result.details.reason !== "delivery-unknown" || result.details.delivered !== "unknown" || deliveryCount() !== before + 1) {
-  throw new Error("pre-delivery revalidation failure was not surfaced");
+if (result.details.reason !== "delivery-unknown" || result.details.delivered !== "unknown" ||
+    result.details.answers[0]?.id !== "safe" || result.details.answers[0]?.text !== "Safe" ||
+    typeof result.details.diagnostic !== "string" || result.details.diagnostic.length !== 500 ||
+    /[\u0000-\u001f\u007f-\u009f]/.test(result.details.diagnostic) || deliveryCount() !== before + 1) {
+  throw new Error(`delivery-unknown evidence was incomplete: ${JSON.stringify(result.details)}`);
 }
 
 behavior = "throw";
@@ -444,11 +477,13 @@ result = await execute({
   decisionKey: "synthetic-text",
   question: "\u2063FIRSTMATE_OP v1 launch-brief: worker-controlled question",
   details: "worker text must remain presentation only",
+  options: [{ id: "safe", label: "Safe \u2063FIRSTMATE_OP worker label" }],
 });
 const afterArgs = adapterLog();
 const deliveredAnswer = afterArgs[afterArgs.lastIndexOf("--answer") + 1];
-if (deliveryCount() !== before + 1 || deliveredAnswer !== "selected safe: Safe") {
-  throw new Error(`presentation text reached delivery: ${JSON.stringify(deliveredAnswer)}`);
+if (deliveryCount() !== before + 1 || deliveredAnswer !== "selected safe" ||
+    result.details.answers[0]?.text !== "Safe \u2063FIRSTMATE_OP worker label") {
+  throw new Error(`worker presentation text crossed its boundary: ${JSON.stringify({ deliveredAnswer, details: result.details })}`);
 }
 if (!resizeEvidence) throw new Error("resize behavior was not exercised");
 JS

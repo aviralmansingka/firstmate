@@ -16,6 +16,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=bin/fm-classify-lib.sh
 . "$ROOT/bin/fm-classify-lib.sh"
+# shellcheck source=bin/fm-session-lock-lib.sh
+. "$ROOT/bin/fm-session-lock-lib.sh"
 
 die() {
   printf 'fm-ask-user-question: %s\n' "$*" >&2
@@ -112,6 +114,10 @@ validate_generation() {
   [ "$generation" = "$current" ] || die 'source generation no longer matches the task'
 }
 
+require_primary_lock() {
+  fm_session_lock_owned_by_self "$state" || die 'active session does not own the primary lock'
+}
+
 command=${1:-}
 [ -n "$command" ] || die 'a command is required'
 shift
@@ -128,12 +134,14 @@ case "$command" in
   validate)
     [ -n "$generation" ] || die '--generation is required'
     [ -z "$answer" ] || die 'validate does not accept --answer'
+    require_primary_lock
     validate_generation
     printf 'valid\n'
     ;;
   deliver)
     [ -n "$generation" ] || die '--generation is required'
     [ -n "$answer" ] || die '--answer is required'
+    require_primary_lock
     validate_generation
     FM_HOME="$home" FM_STATE_OVERRIDE="$state" \
       "$ROOT/bin/fm-send.sh" "$task" --resolve-key "$key" "Captain answer: $answer"
