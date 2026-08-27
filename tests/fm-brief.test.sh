@@ -817,6 +817,10 @@ test_scout_and_secondmate_scaffold() {
   assert_grep "report.md" "$brief" "scout brief must point at the report deliverable"
   assert_grep "you may host the Lavish review loop yourself" "$brief" \
     "scout brief must mention the option to host a Lavish review loop"
+  assert_grep "fm_complete" "$brief" \
+    "scout brief must tell a pi scout to call fm_complete after appending done:"
+  assert_grep "store-first gate" "$brief" \
+    "scout brief must name the store-first gate fm_complete enforces"
 
   FM_SECONDMATE_CHARTER='Supervise the alpha domain.' \
     FM_HOME="$BRIEF_HOME" "$ROOT/bin/fm-brief.sh" brief-sm-q6 --secondmate alpha >/dev/null 2>&1 \
