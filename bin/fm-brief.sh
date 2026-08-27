@@ -32,6 +32,7 @@
 # captain's standing posture as context, and this script never reads it:
 #   no-mistakes  implement -> /no-mistakes pipeline -> PR -> configured merge authority
 #   direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> configured merge authority
+# PR repository targeting is owned by this script's generated ship delivery contract.
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
 #                the configured merge authority approves, firstmate merges to local main
 # no-mistakes-prod-only is a registry policy, not a task mode; resolve it to one of
@@ -410,7 +411,7 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 The task is complete only when committed on your branch.
-When the project's upstream is third-party (the captain does not own it), the branch and PR target the captain's fork, never the upstream repo; the configured merge authority is unchanged.
+When the project's upstream is third-party (the captain does not own it), the pushed branch and PR target the captain's fork, never the upstream repo; the configured merge authority is unchanged.
 When you believe it is complete, append \`done: {summary}\` to the status file and stop.
 Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 
