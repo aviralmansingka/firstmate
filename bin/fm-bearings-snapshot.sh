@@ -116,6 +116,7 @@ Default fields: schema, home, generated, prs, in_flight{id,kind,state,doing},
   secondmate_reconcile{id,spawn_gen,kind,ids},
   decisions_open{id,key,verb,summary,owner}, landed{id,what,artifact,owner},
   gates{id,title,blocked_by,reason,owner}, reports{id,path}, recorded_prs{id,url},
+  fleet_pulse_digest, fleet_pulse{tier,id,kind,key,summary,age_s,source},
   unhealthy_endpoints{...} (only when non-empty), omitted{surface,reveal}.
 landed merges this home's Done with registered secondmate homes' Done, bounded by
   a per-home cap (FM_BEARINGS_LANDED_PER_HOME) and an overall cap (FM_BEARINGS_LANDED),
@@ -277,6 +278,8 @@ EOF
   fi
 fi
 
+# --- Fleet Pulse: precedence-ranked poll over declared signals ---------------
+FLEET_PULSE=$(printf '%s' "$SNAP" | "$SCRIPT_DIR/fm-fleet-poll.sh" --json --snapshot - 2>/dev/null) || FLEET_PULSE='{"schema":"fm-fleet-poll.v1","ranked":[],"digest":"0 items"}'
 # --- projection: canonical snapshot -> fm-bearings.v1 model (JSON) ----------
 BEARINGS_TODAY=${NOW%%T*}
 case "$BEARINGS_TODAY" in
@@ -307,6 +310,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   --argjson all_queued "$ALL_QUEUED" \
   --argjson all_recorded_prs "$ALL_RECORDED_PRS" \
   --argjson all_unhealthy "$ALL_UNHEALTHY" \
+  --argjson fleet_pulse "$FLEET_PULSE" \
   --argjson pr_repos_total "$PR_REPOS_TOTAL" \
   --argjson pr_repos_shown "$PR_REPOS_SHOWN" \
   --argjson pr_rows_capped "$PR_ROWS_CAPPED" \
@@ -462,6 +466,8 @@ MODEL=$(printf '%s' "$SNAP" | jq \
       reports: (if $all_reports == 1 then $reports_all else $reports_all[:$reports_n] end),
       recorded_prs: (if $all_recorded_prs == 1 then $recorded_prs_all else $recorded_prs_all[:$recorded_prs_n] end)
     }
+  + {fleet_pulse_digest: ($fleet_pulse.digest // "0 items"),
+     fleet_pulse: ($fleet_pulse.ranked // [])}
   | . + (if ($unhealthy_all | length) > 0 then
            {unhealthy_endpoints:(if $all_unhealthy == 1 then $unhealthy_all else $unhealthy_all[:$unhealthy_n] end)}
          else {} end)

@@ -116,6 +116,24 @@ A board "Merge now" answer IS the captain's explicit merge word for that one exa
 The safeguards are mandatory, not optional: resolve the PR from the task's own `state/<task-id>.meta` `pr=` record, never from board bytes; re-verify at wake time that the PR is still open and CI-green; refuse and report a red or changed PR rather than merging it; merge only through `bin/fm-pr-merge.sh`; and echo every merge in chat with the full PR URL.
 Only the exact answer value `merge` authorizes a merge; an answer carrying a freeform note is the captain's instruction text to read and act on with judgment, never an auto-merge.
 
+
+## Fleet Pulse
+
+The snapshot carries a `fleet_pulse` field from `bin/fm-fleet-poll.sh`, a read-only precedence-ranked poll over declared fleet signals.
+It composes the existing fleet snapshot with the keyed open-decision fold into a total-order ranked list:
+
+1. Captain-held items (backlog `captain_actionable`) - the captain owns these by definition.
+2. Open `needs-decision` keys - a worker asked and is waiting.
+3. Open `blocked` keys with enumerated options - actionable immediately.
+4. Open `blocked` keys without options - need diagnosis before ruling.
+5. Failure/attention states - `failed`, `paused`.
+
+Tie-break inside a tier is oldest-first (age from status file mtimes).
+The `fleet_pulse_digest` field carries a one-line summary like "2 captain-held - 1 needs-decision".
+Render the digest and any tier-1 or tier-2 rows in the Captain's Call section so the captain sees them at a glance.
+The poll is read-only: running it changes no state-file mtimes, arms no watcher, mutates no backlog.
+Phase 1 has no `--peek` flag; undeclared-musing reads are Phase 5 (opt-in per invocation, never default).
+
 ## Chat-response contract
 
 This skill is the one owner of the `/bearings` chat-response format; the snapshot and classifier own the data that feeds it, and no other file restates this contract.
