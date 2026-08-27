@@ -30,12 +30,17 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 
 usage() {
   cat <<'EOF'
-usage: fm-fleet-poll.sh [--json] [--snapshot -|<file>]
+usage: fm-fleet-poll.sh [--json] [--peek] [--snapshot -|<file>]
 
 Read-only precedence-ranked fleet poll over declared signals.
 Composes fm-fleet-snapshot.sh + the keyed open-decision fold.
 
 --json           emit fm-fleet-poll.v1 JSON (default: human digest)
+--peek           ALSO emit tier-6 undeclared-musing rows by reading pane/
+                 transcript tails of RUNNING sub-agents via bin/fm-peek.sh.
+                 OPT-IN per invocation: never default, never in heartbeats.
+                 Each armed poll performs N pane reads and documents them in
+                 the digest so exposure is auditable.
 --snapshot -     read snapshot JSON from stdin
 --snapshot <file> read snapshot JSON from a file
 EOF
@@ -43,9 +48,11 @@ EOF
 
 OUTPUT=human
 SNAPSHOT_SRC=""
+PEEK=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --json) OUTPUT=json ;;
+    --peek) PEEK=1 ;;
     --snapshot) shift; SNAPSHOT_SRC=${1:-} ;;
     --snapshot=*) SNAPSHOT_SRC=${1#--snapshot=} ;;
     -h|--help) usage; exit 0 ;;
@@ -94,8 +101,36 @@ fi
 
 NOW_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# --- optional tier-6: undeclared musings via pane/transcript tails -----------
+# ONLY when --peek armed (Call 2: opt-in per invocation, never default, never in
+# heartbeats). Reads a bounded tail of each RUNNING sub-agent's pane via
+# bin/fm-peek.sh and heuristically extracts trailing questions / enumerated
+# options, labeled `undeclared`. Each armed poll performs N pane reads and
+# records the count in the digest so exposure is auditable. Unarmed: zero
+# tier-6 rows (the privacy proof).
+PEEK_ROWS='[]'
+PEEK_READS=0
+if [ "$PEEK" -eq 1 ]; then
+  # Running sub-agents: current_state.state == working and a parent_task set.
+  running=$(printf '%s' "$SNAP" | jq -r '.tasks[] | select(.current_state.state=="working" and .parent_task!=null) | .id' 2>/dev/null || true)
+  if [ -n "$running" ]; then
+    peek_items=''
+    for tid in $running; do
+      tail=$("$SCRIPT_DIR/fm-peek.sh" "$tid" 40 2>/dev/null || true)
+      PEEK_READS=$((PEEK_READS + 1))
+      [ -n "$tail" ] || continue
+      # Heuristic: trailing question or enumerated options in the last 40 lines.
+      musing=$(printf '%s' "$tail" | tail -20 | grep -iE '\?|option [A-C]|[0-9]+[.)] ' | tail -3 | tr '\n' ' ' | cut -c1-140)
+      [ -n "$musing" ] || continue
+      peek_items=$(printf '%s' "$peek_items" | jq --arg tid "$tid" --arg m "$musing" \
+        '. + [{tier:6,id:$tid,kind:"undeclared",key:null,summary:$m,age_s:null,source:"peek"}]' 2>/dev/null || true)
+    done
+    [ -n "$peek_items" ] && PEEK_ROWS=$peek_items
+  fi
+fi
+
 # --- compose the ranked list (precedence ladder) -----------------------------
-RESULT=$(printf '%s' "$SNAP" | jq --argjson age_map "$AGE_MAP" --arg now "$NOW_ISO" '
+RESULT=$(printf '%s' "$SNAP" | jq --argjson age_map "$AGE_MAP" --arg now "$NOW_ISO" --argjson peek_rows "$PEEK_ROWS" --argjson peek_reads "$PEEK_READS" --argjson peek_armed "$PEEK" '
   # Heuristic: does a blocked summary enumerate options?
   def has_options:
     test("(?i)\\boption\\b|alternatively|either\\b")
@@ -197,6 +232,11 @@ RESULT=$(printf '%s' "$SNAP" | jq --argjson age_map "$AGE_MAP" --arg now "$NOW_I
       }
   ])
 
+  # Tier 6: undeclared musings - ONLY from --peek armed rows passed in from
+  # bash (pane/transcript tails via fm-peek.sh). Absent entirely when --peek is
+  # not armed (the privacy proof: zero tier-6 rows by default).
+  + $peek_rows
+
   # Sort: tier ascending, then oldest-first (age descending), nulls last.
   | sort_by(.tier, if .age_s == null then 999999999 else -(.age_s) end)
 
@@ -206,6 +246,8 @@ RESULT=$(printf '%s' "$SNAP" | jq --argjson age_map "$AGE_MAP" --arg now "$NOW_I
   | {
       schema: "fm-fleet-poll.v1",
       generated_at: $now,
+      peek_armed: ($peek_armed == 1),
+      peek_reads: $peek_reads,
       ranked: $ranked,
       digest: (
         if ($ranked | length) == 0 then "0 items"

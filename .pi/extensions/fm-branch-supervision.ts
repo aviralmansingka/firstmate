@@ -119,7 +119,7 @@ const effortPinFile = join(config, "supervision-branch-effort");
 // Same tool set in the same order on every request (part of the cached
 // prefix). "bash" resolves to the customTools override below, which injects
 // the branch actor identity deterministically into every shell command.
-const BRANCH_TOOL_NAMES = ["read", "bash", "fm_branch_report"] as const;
+const BRANCH_TOOL_NAMES = ["read", "bash", "fm_branch_report", "fm_fleet_poll"] as const;
 
 // One shared prompt_cache_key per home for ALL branch sessions, derived only
 // from the home path so it survives restarts; main keeps its own session key.
@@ -1351,6 +1351,32 @@ ${context.command}
         content: [{ type: "text", text: listed.stdout || "(no branch outcomes recorded)" }],
         details: undefined,
       };
+    },
+  });
+
+  pi.registerTool?.({
+    name: "fm_fleet_poll",
+    label: "Poll the fleet for ranked signals",
+    description:
+      "Run bin/fm-fleet-poll.sh --json (NEVER arm the peek flag; heartbeats never peek) and return the precedence-ranked fleet poll: tiers 1-5 over declared signals (captain-held, needs-decision, blocked-with-options, blocked, failed/paused). Use this in heartbeat reviews to cite the ranked list and escalate ONLY when the tier-1 or tier-2 set changed since the last review (a two-stage noise filter): a no-change tier-1/2 review is silent. Tier-6 undeclared musings are NEVER returned by this tool (the peek flag is opt-in per invocation and excluded from heartbeats by Call 2).",
+    promptSnippet: "Poll the fleet ranked signals; escalate only on tiers-1-2 delta.",
+    promptGuidelines: [
+      "Call fm_fleet_poll in heartbeat reviews to get the ranked fleet poll (tiers 1-5 only; never tier-6).",
+      "Escalate to the captain ONLY when the tier-1 or tier-2 set changed since the last review; a no-change tier-1/2 heartbeat is silent (silent=true on fm_branch_report).",
+      "Never arm the peek flag on fm-fleet-poll.sh from this tool; the peek read is opt-in per invocation and excluded from heartbeats by the captain's Call 2 ruling.",
+    ],
+    parameters: Type.Object({}),
+    execute: async () => {
+      const result = spawnSync("bash", [join(fmRoot, "bin", "fm-fleet-poll.sh"), "--json"], {
+        cwd: fmRoot,
+        encoding: "utf8",
+        env: scriptEnv,
+        maxBuffer: 1024 * 1024,
+      });
+      if (result.status !== 0 || !result.stdout) {
+        return { content: [{ type: "text", text: `fm-fleet-poll failed: ${(result.stderr || "").trim() || "no output"}` }], details: undefined, isError: true };
+      }
+      return { content: [{ type: "text", text: result.stdout }], details: undefined };
     },
   });
 
