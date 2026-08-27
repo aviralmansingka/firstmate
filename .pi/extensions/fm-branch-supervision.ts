@@ -581,7 +581,7 @@ export default function (pi: ExtensionAPI) {
       name: "fm_branch_report",
       label: "Report supervision outcome",
       description:
-        "Record the outcome of one handled fleet event: write it durably to the outcome store, then merge an append-only note into the captain-facing main conversation. verdict captain surfaces it to the captain in one turn; routine notes render unless silent marks a no-change heartbeat.",
+        "Record the outcome of one handled fleet event: write it durably to the outcome store, then merge an append-only note into the captain-facing main conversation. verdict captain surfaces it to the captain in one turn; routine notes render unless silent marks a no-change heartbeat. Scout self-termination: when a scout's agent is gone and its state/<id>.meta carries self_terminate=expected AND its status file tail carries a done: or failed: verb, report verdict routine with a 🏁 prefix in the summary (a clean self-termination, not a wedge). When a scout's agent is gone with NO terminal status verb, do NOT report 🏁 - that is a wedge (🛑) and routes through the ordinary stale/wedge path instead.",
       parameters: Type.Object({
         task: Type.String({ description: "The task id the event belongs to (or 'fleet' for fleet-wide events)" }),
         verdict: Type.Union([Type.Literal("routine"), Type.Literal("captain")], {

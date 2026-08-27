@@ -2699,6 +2699,9 @@ preserve_relaunch_meta() {
     echo "home=$PROJ_ABS"
     echo "projects=$SECONDMATE_PROJECTS"
   fi
+  if [ "$KIND" = scout ]; then
+    echo "self_terminate=expected"
+  fi
   if [ "$RELAUNCH" -eq 1 ]; then
     preserve_relaunch_meta
   fi

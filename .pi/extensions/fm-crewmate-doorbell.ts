@@ -21,11 +21,16 @@
 // crewmate's fm-spawn launch sets FM_TASK_ID (and the -e load path is outside
 // the worktree, so pi's project-trust gate does not fire on it).
 //
-// fm_complete is registered here as a Phase-2 stub that refuses: Phase 3 wires
-// scout self-termination and replaces this body with the store-first gate (the
-// tool refuses unless the task's status file tail already carries a terminal
-// verb, then exits the process). No brief tells a worker to call fm_complete
-// until Phase 3, so the stub is never reached in Phase 2.
+// fm_complete is the scout self-termination tool (Phase 3). It enforces a
+// store-first gate: it refuses unless the task's status file tail already
+// carries a terminal verb (done: or failed:), so the durable record lands before
+// the process ever exits - the same discipline as branch outcomes. When the gate
+// holds, it schedules the process exit for the agent_settled boundary (the
+// "will not run again" moment, NOT turn_end, because auto-retries and queued
+// follow-ups keep a run un-settled past individual turn boundaries). If the
+// agent is already idle when fm_complete is called, the exit is immediate.
+// Ships (v1 needs a landed-precondition before exit) and secondmates (never
+// self-terminate) do not call fm_complete; their briefs never mention it.
 //
 // The doorbell line text is the stable self-describing contract owned by
 // bin/fm-task-inbox-lib.sh (fm_task_inbox_doorbell_line); this file mirrors that
@@ -72,6 +77,28 @@ function deliverModeOf(recordPath: string): "steer" | "followUp" {
     // unreadable or gone: treat as the safe default
   }
   return "followUp";
+}
+
+// The most recent terminal verb in the status file tail, or empty when none.
+// The store-first gate refuses fm_complete unless this is done or failed.
+function terminalVerbOf(statusPath: string): string {
+  let text: string;
+  try {
+    text = readFileSync(statusPath, "utf8");
+  } catch {
+    return "";
+  }
+  const lines = text.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const m = line.match(/^(done|failed):/);
+    if (m) return m[1];
+    // The first non-empty trailing line is the status tail; if it is not a
+    // terminal verb, nothing later in the file is either.
+    return "";
+  }
+  return "";
 }
 
 function seqOf(name: string): number | null {
@@ -162,29 +189,58 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", () => start());
   pi.on("session_shutdown", () => stop());
 
-  // Phase-2 stub: Phase 3 replaces this body with the store-first gate (refuse
-  // unless the task status tail carries done:/failed:, then exit the process).
-  // Registered only inside a crewmate session, never in the primary firstmate.
+  // Phase 3: scout self-termination with a store-first gate. The tool refuses
+  // unless the task's status file tail already carries done: or failed: (the
+  // durable record lands before the process ever exits). When the gate holds,
+  // the exit is scheduled for agent_settled - the "will not run again"
+  // boundary, not turn_end - so auto-retries and queued follow-ups complete
+  // first. If the agent is already idle, the exit is immediate. Ships and
+  // secondmates never call this (no brief mentions it); the fm-spawn meta
+  // self_terminate=expected is what tells the branch observer this exit is a
+  // clean self-termination (🏁), not a wedge (🛑).
+  let settleExitArmed = false;
+  const statusPath = `${stateDir}/${taskId}.status`;
+  function armExit(): void {
+    if (settleExitArmed) return;
+    settleExitArmed = true;
+    pi.on("agent_settled", () => process.exit(0));
+  }
   pi.registerTool?.({
     name: "fm_complete",
-    label: "Complete task",
+    label: "Complete and exit",
     description:
-      "Mark this task complete and exit cleanly. Appends nothing itself; Phase 3 wires the store-first gate that requires a terminal status line first. Until then this tool is not active - append done: or failed: to your status file and exit via your normal mechanism.",
+      "Mark this scout task complete and exit cleanly. STORE-FIRST GATE: append `done: <one-line summary>` (or `failed: <reason>`) to your status file FIRST, then call this tool. It refuses unless the status file tail already carries done: or failed:. On success the process exits at the agent_settled boundary (after any auto-retries or queued follow-ups finish). Only scouts call this; ships and secondmates never do.",
     promptSnippet:
-      "Mark the task complete and exit; not active until self-termination wiring is in place.",
+      "Append done: or failed: to the status file, then call fm_complete to exit cleanly. Refuses without a terminal status line.",
     promptGuidelines: [
-      "fm_complete is not active until self-termination wiring lands; do not call it. Append done: or failed: to your status file and exit via your normal mechanism instead.",
+      "Append `done: <summary>` or `failed: <reason>` to the status file BEFORE calling fm_complete; it refuses without a terminal status line.",
+      "Call fm_complete exactly once at the very end of the task; it exits the process at agent_settled.",
+      "Only scouts call fm_complete; ships and secondmates never do.",
     ],
     parameters: Type.Object({}),
     async execute() {
+      const verb = terminalVerbOf(statusPath);
+      if (verb !== "done" && verb !== "failed") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "fm_complete refused: no terminal status line found. Append `done: <one-line summary>` or `failed: <reason>` to your status file FIRST, then call fm_complete again. The durable record must land before the process exits.",
+            },
+          ],
+          details: undefined,
+          isError: true,
+        };
+      }
+      armExit();
       return {
         content: [
           {
             type: "text",
-            text: "fm_complete is not active yet (self-termination wiring is Phase 3). Append done: or failed: to your status file and exit via your normal mechanism.",
+            text: `Terminal status \`${verb}:\` confirmed. The process will exit at the agent_settled boundary (after any auto-retries or queued follow-ups finish). Do not call any more tools.",
           },
         ],
-        details: {},
+        details: undefined,
       };
     },
   });

@@ -859,3 +859,37 @@ test_non_claude_harness_ignores_config_dir
 test_active_dispatch_profile_does_not_block_secondmate_launch
 
 echo "# all fm-spawn-dispatch-profile tests passed"
+
+test_scout_meta_carries_self_terminate_expected() {
+  local rec id out status meta
+  id=profile-scout-selfterm-z11
+  rec=$(make_spawn_case profile-scout-selfterm claude "$id")
+  read_case_record "$rec"
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --scout)
+  status=$?
+  expect_code 0 "$status" "claude scout spawn should succeed"
+  meta="$HOME_DIR/state/$id.meta"
+  assert_present "$meta" "scout spawn did not write meta"
+  assert_grep "kind=scout" "$meta" "scout meta must record kind=scout"
+  assert_grep "self_terminate=expected" "$meta" \
+    "scout meta must carry self_terminate=expected so the branch observer reads a clean self-exit as not-a-wedge"
+  pass "scout meta carries self_terminate=expected for the branch observer"
+}
+
+test_ship_meta_omits_self_terminate() {
+  local rec id out status meta
+  id=profile-ship-no-selfterm-z12
+  rec=$(make_spawn_case profile-ship-no-selfterm claude "$id")
+  read_case_record "$rec"
+  out=$(run_ship_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR")
+  status=$?
+  expect_code 0 "$status" "claude ship spawn should succeed"
+  meta="$HOME_DIR/state/$id.meta"
+  assert_grep "kind=ship" "$meta" "ship meta must record kind=ship"
+  assert_absent "self_terminate" "$meta" \
+    "ship meta must NOT carry self_terminate (ships need a landed-precondition before exit and never self-terminate in v1)"
+  pass "ship meta omits self_terminate (ships never self-terminate in v1)"
+}
+
+test_scout_meta_carries_self_terminate_expected
+test_ship_meta_omits_self_terminate
