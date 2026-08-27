@@ -434,7 +434,7 @@ task_json_lines() {
   local remote_host remote_root remote_state remote_rc remote_home_present
   local pr pr_source event_json current_json endpoint_exists agent_alive meta_json status_json report_json worktree_json home_json
   local last_event_raw current_state current_source pending_decision blocked_event report_present=0 pr_from_status
-  local open_decisions_tsv open_decisions_json
+  local open_decisions_tsv open_decisions_json parent_task agent_status_raw
 
   for meta in "$STATE"/*.meta; do
     [ -e "$meta" ] || continue
@@ -464,6 +464,7 @@ task_json_lines() {
     report_path="$DATA/$id/report.md"
     pr=$(meta_value "$meta" pr)
     pr_source=meta
+    parent_task=$(meta_value "$meta" parent_task)
     if [ -z "$pr" ]; then
       pr_from_status=$(first_pr_url_in_file "$status_log" || true)
       pr=$pr_from_status
@@ -478,6 +479,7 @@ task_json_lines() {
     last_event_raw=$(printf '%s' "$event_json" | jq -r '.last_event.raw // ""')
     current_state=$(printf '%s' "$current_json" | jq -r '.state // ""')
     current_source=$(printf '%s' "$current_json" | jq -r '.source // ""')
+    agent_status_raw=$current_state
 
     # Durable keyed open-decision set: fold the WHOLE status stream
     # (fm-classify-lib.sh's status_open_decisions) so a later unrelated event can
@@ -578,6 +580,8 @@ task_json_lines() {
       --arg agent_alive "$agent_alive" \
       --arg observed_at "$SNAPSHOT_NOW" \
       --arg last_event_raw "$last_event_raw" \
+      --arg parent_task "$parent_task" \
+      --arg agent_status "$agent_status_raw" \
       --argjson current_state "$current_json" \
       --argjson meta_path "$meta_json" \
       --argjson status_log "$status_json" \
@@ -596,6 +600,8 @@ task_json_lines() {
         mode:($mode // ""),
         yolo:($yolo // ""),
         project:($project // ""),
+        parent_task:($parent_task | if . == "" then null else . end),
+        agent_status:($agent_status | if . == "" then null else . end),
         spawn_gen:($spawn_gen | if . == "" then null else . end),
         backend:$backend,
         remote:(if $remote_host == "" then null else {host:$remote_host,root:$remote_root} end),

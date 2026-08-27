@@ -287,6 +287,7 @@ MODE_SET=0
 YOLO_SET=0
 TRACEPARENT_SET=0
 RELAUNCH=0
+SUB_AGENT_PARENT=
 POS=()
 want_value=
 for a in "$@"; do
@@ -301,6 +302,7 @@ for a in "$@"; do
       backend) BACKEND_ARG=$a; BACKEND_SET=1 ;;
       mode) MODE=$a; MODE_SET=1 ;;
       yolo) YOLO=$a; YOLO_SET=1 ;;
+      sub-agent) SUB_AGENT_PARENT=$a ;;
       traceparent) TRACEPARENT_ARG=$a; TRACEPARENT_SET=1 ;;
       *) echo "error: internal parser state for --$want_value" >&2; exit 1 ;;
     esac
@@ -311,6 +313,8 @@ for a in "$@"; do
     --scout) KIND=scout; KIND_SET=1 ;;
     --secondmate) KIND=secondmate; KIND_SET=1 ;;
     --relaunch) RELAUNCH=1 ;;
+    --sub-agent) want_value=sub-agent ;;
+    --sub-agent=*) SUB_AGENT_PARENT=${a#--sub-agent=} ;;
     --harness) want_value=harness ;;
     --harness=*) HARNESS_ARG=${a#--harness=}; HARNESS_SET=1 ;;
     --model) want_value=model ;;
@@ -329,6 +333,7 @@ for a in "$@"; do
   esac
 done
 [ -z "$want_value" ] || { echo "error: --$want_value requires a value" >&2; exit 1; }
+[ -z "$SUB_AGENT_PARENT" ] || { [ -n "${SUB_AGENT_PARENT//[!A-Za-z0-9._-]/}" ] && [ "$SUB_AGENT_PARENT" = "${SUB_AGENT_PARENT//[!A-Za-z0-9._-]/}" ] || { echo "error: --sub-agent requires a valid task id" >&2; exit 1; }; }
 [ "$HARNESS_SET" -eq 0 ] || [ -n "$HARNESS_ARG" ] || { echo "error: --harness requires a non-empty value" >&2; exit 1; }
 [ "$MODEL_SET" -eq 0 ] || [ -n "$MODEL" ] || { echo "error: --model requires a non-empty value" >&2; exit 1; }
 [ "$EFFORT_SET" -eq 0 ] || [ -n "$EFFORT" ] || { echo "error: --effort requires a non-empty value" >&2; exit 1; }
@@ -971,6 +976,10 @@ if [ "$RELAUNCH" -eq 0 ]; then
   fi
   fm_backend_validate_spawn "$BACKEND" || exit 1
   fm_backend_source "$BACKEND" || exit 1
+  if [ -n "$SUB_AGENT_PARENT" ] && [ "$BACKEND" != herdr ]; then
+    echo "error: --sub-agent is only supported on the herdr backend (got '$BACKEND')" >&2
+    exit 1
+  fi
   if [ "$BACKEND" = orca ] && [ "$KIND" = secondmate ]; then
     echo "error: backend=orca does not support --secondmate spawns yet" >&2
     exit 1
@@ -2056,6 +2065,28 @@ EOF
       exit 1
     fi
     T="$HERDR_SES:$HERDR_PANE_ID"
+    # Option-A sub-agent spawn (design §B, captain's Call 1): a sub-agent gets
+    # a sibling pane split inside its PARENT's tab, not its own tab, then a
+    # named herdr agent started in that new pane. The parent's pane id is
+    # resolved fail-closed from the parent task's meta record so a stale or
+    # missing parent refuses rather than splitting the wrong pane. --no-focus
+    # on every mutation so the parent's focus never moves. This branch composes
+    # PR 2+3: the sub-agent inherits the crewmate doorbell extension (steer
+    # lanes) and, for scouts, clean self-exit via fm_complete.
+    if [ -n "$SUB_AGENT_PARENT" ]; then
+      SUB_PARENT_META="$STATE/$SUB_AGENT_PARENT.meta"
+      [ -f "$SUB_PARENT_META" ] || { echo "error: --sub-agent parent $SUB_AGENT_PARENT has no meta at $SUB_PARENT_META" >&2; exit 1; }
+      SUB_PARENT_PANE=$(fm_meta_get "$SUB_PARENT_META" herdr_pane_id)
+      [ -n "$SUB_PARENT_PANE" ] || { echo "error: --sub-agent parent $SUB_AGENT_PARENT meta has no herdr_pane_id" >&2; exit 1; }
+      SUB_PARENT_SESSION=$(fm_meta_get "$SUB_PARENT_META" herdr_session)
+      [ -n "$SUB_PARENT_SESSION" ] || SUB_PARENT_SESSION=$HERDR_SES
+      SUB_PANE_ID=$(fm_backend_herdr_pane_split "$SUB_PARENT_SESSION" "$SUB_PARENT_PANE" "$WT" right) || {
+        echo "error: --sub-agent could not split parent pane $SUB_PARENT_PANE in session $SUB_PARENT_SESSION" >&2; exit 1; }
+      fm_backend_herdr_agent_start "$SUB_PARENT_SESSION" "fm-$ID" pi "$SUB_PANE_ID" || {
+        echo "error: --sub-agent could not start named agent fm-$ID in pane $SUB_PANE_ID" >&2; exit 1; }
+      HERDR_PANE_ID=$SUB_PANE_ID
+      T="$SUB_PARENT_SESSION:$SUB_PANE_ID"
+    fi
     ;;
   zellij)
     ZELLIJ_SES=$(fm_backend_zellij_container_ensure) || exit 1
@@ -2701,6 +2732,13 @@ preserve_relaunch_meta() {
   fi
   if [ "$KIND" = scout ]; then
     echo "self_terminate=expected"
+  fi
+  if [ -n "${SUB_AGENT_PARENT:-}" ]; then
+    echo "parent_task=$SUB_AGENT_PARENT"
+    SUB_PARENT_META="$STATE/$SUB_AGENT_PARENT.meta"
+    SUB_PARENT_PANE=$(fm_meta_get "$SUB_PARENT_META" herdr_pane_id 2>/dev/null || true)
+    [ -n "$SUB_PARENT_PANE" ] || { echo "error: --sub-agent parent $SUB_AGENT_PARENT meta has no herdr_pane_id at publish time" >&2; exit 1; }
+    echo "parent_pane=$SUB_PARENT_PANE"
   fi
   if [ "$RELAUNCH" -eq 1 ]; then
     preserve_relaunch_meta

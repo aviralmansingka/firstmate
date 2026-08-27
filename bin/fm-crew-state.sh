@@ -588,6 +588,23 @@ fi
 [ -n "$BACKEND_TARGET" ] || emit unknown none "no backend target recorded"
 pane_readable "$BACKEND_TARGET" || emit unknown none "backend target gone: $BACKEND_TARGET"
 
+# Herdr pi-kind panes expose a native agent_status (working/idle/done/blocked)
+# that is more authoritative than the codex-unverified composer probing below.
+# Prefer it for pi/pi-signals crewmates and scouts; the degraded `unknown - none`
+# fallback is preserved when the read is empty or the backend is not herdr.
+if [ "$TASK_BACKEND" = herdr ] && { [ "$HARNESS" = pi ] || [ "$HARNESS" = pi-signed ]; }; then
+  fm_backend_herdr_parse_target "$BACKEND_TARGET" 2>/dev/null || true
+  HERDR_AGENT_STATUS=$(fm_backend_herdr_agent_status_raw "$FM_BACKEND_HERDR_SESSION" "$FM_BACKEND_HERDR_PANE" 2>/dev/null || true)
+  HERDR_AGENT_DETAIL="herdr agent_status: $HERDR_AGENT_STATUS"
+  case "$HERDR_AGENT_STATUS" in
+    working) emit working pane "$HERDR_AGENT_DETAIL" ;;
+    idle) emit parked pane "$HERDR_AGENT_DETAIL" ;;
+    done) emit "$HERDR_AGENT_STATUS" pane "$HERDR_AGENT_DETAIL" ;;
+    blocked) emit blocked pane "$HERDR_AGENT_DETAIL" ;;
+    *) ;;  # empty or unrecognized: fall through to the composer/status-log path
+  esac
+fi
+
 # Secondmates idle on their own watcher (idle pane = healthy), so the busy
 # state is not meaningful for them; read their state from the status log only.
 # Only an exact busy verdict reports working here, and only an exact idle

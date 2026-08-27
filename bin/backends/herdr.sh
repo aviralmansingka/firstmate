@@ -2047,6 +2047,45 @@ EOF
   printf '%s %s' "$tab_id" "$pane_id"
 }
 
+# fm_backend_herdr_pane_split: split <parent_pane_id> in <session> and echo
+# the new pane_id. --direction right|down (default right), --cwd <path>, and
+# --no-focus (default; focus is never stolen from the parent). Used by the
+# option-A sub-agent spawn path (design §B): a sub-agent gets a sibling pane
+# inside its parent's tab, not its own tab. Returns 1 on any CLI or parse
+# failure so the caller fails closed rather than spawning into the wrong pane.
+fm_backend_herdr_pane_split() {  # <session> <parent_pane_id> [cwd] [direction]
+  local session=$1 parent=$2 cwd=${3:-} direction=${4:-right} out pane_id
+  local args=(pane split --pane "$parent" --direction "$direction" --no-focus)
+  [ -z "$cwd" ] || args+=(--cwd "$cwd")
+  out=$(fm_backend_herdr_cli "$session" "${args[@]}" 2>/dev/null) || return 1
+  pane_id=$(printf '%s' "$out" | jq -r '.result.pane.pane_id // empty' 2>/dev/null)
+  [ -n "$pane_id" ] || return 1
+  printf '%s' "$pane_id"
+}
+
+# fm_backend_herdr_agent_start: start a named interactive agent of <kind> in
+# <pane_id> (session <session>). The pane must be at an interactive shell
+# prompt; on success the agent is registered and ready for input. Used by the
+# option-A sub-agent spawn path so a sub-agent is a named herdr agent
+# (herdr agent list -> fm-<id> kind=pi) with picker visibility. Extra agent
+# args after -- are forwarded verbatim. Returns 1 on failure.
+fm_backend_herdr_agent_start() {  # <session> <name> <kind> <pane_id> [agent_args...]
+  local session=$1 name=$2 kind=$3 pane=$4
+  shift 4
+  if [ $# -gt 0 ]; then
+    fm_backend_herdr_cli "$session" agent start "$name" --kind "$kind" --pane "$pane" -- "$@" >/dev/null 2>&1 || return 1
+  else
+    fm_backend_herdr_cli "$session" agent start "$name" --kind "$kind" --pane "$pane" >/dev/null 2>&1 || return 1
+  fi
+}
+
+# fm_backend_herdr_pane_close: close <pane_id> in <session>, best-effort.
+# Used by sub-agent teardown to close ONLY the recorded sub-pane; the parent's
+# tab survives because the sub-pane is a sibling split, not the tab root.
+fm_backend_herdr_pane_close() {  # <session> <pane_id>
+  fm_backend_herdr_cli "$1" pane close "$2" >/dev/null 2>&1 || true
+}
+
 # fm_backend_herdr_projection_create_task: create one disposable presentation
 # workspace and its normal fm-<id> task tab without looking up, adopting, or
 # reusing any existing workspace.
