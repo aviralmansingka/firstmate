@@ -321,6 +321,33 @@ test_faster_paths_use_configured_authority_without_stacked_review() {
 
 # Pin the specific line the bug lived on: the no-mistakes DOD's no-mistakes
 # reference must render as plain prose with no dangling apostrophe artifact.
+# The captain's standing fork-PR rule (2026-08-27): for a project whose upstream
+# the captain does not own, workers push and PR against the captain's fork, never
+# the upstream repo. The ship brief scaffold owns the full rule, so both PR-opening
+# delivery paths (no-mistakes and direct-PR) must render it; local-only ships no PR
+# and must not.
+test_fork_pr_rule_in_pr_opening_dods() {
+  local home id mode brief
+  home="$TMP_ROOT/fork-pr-rule-home"
+  write_registry "$home"
+  for id_mode in "brief-forkpr-c1:no-mistakes" "brief-forkpr-c2:direct-PR"; do
+    id=${id_mode%%:*}
+    mode=${id_mode##*:}
+    FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode "$mode" >/dev/null 2>&1
+    brief="$home/data/$id/brief.md"
+    assert_grep "the captain's fork, never the upstream repo" "$brief" \
+      "$id ($mode): brief lost the fork-PR target rule"
+    assert_grep "the configured merge authority is unchanged" "$brief" \
+      "$id ($mode): fork-PR rule must reassure that merge authority is unchanged"
+  done
+  # local-only ships no PR, so the fork-PR target line must not appear there.
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-forkpr-c3 some-proj --mode local-only >/dev/null 2>&1
+  brief="$home/data/brief-forkpr-c3/brief.md"
+  assert_no_grep "the captain's fork, never the upstream repo" "$brief" \
+    "local-only brief must not render the fork-PR target rule (it ships no PR)"
+  pass "fm-brief.sh: fork-PR target rule renders in no-mistakes and direct-PR DODs only"
+}
+
 test_no_mistakes_dod_wording() {
   local home id brief
   home="$TMP_ROOT/wording-home"
@@ -809,6 +836,7 @@ test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
 test_faster_paths_use_configured_authority_without_stacked_review
+test_fork_pr_rule_in_pr_opening_dods
 test_no_mistakes_dod_wording
 test_no_mistakes_dod_ask_user_presentation
 test_ship_project_memory_wording
