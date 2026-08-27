@@ -32,6 +32,9 @@
 # Record format (fm_task_inbox_write / fm_task_inbox_body):
 #   schema=fm-task-inbox.v1
 #   at=<utc timestamp>
+#   deliver=steer|followUp    present when fm-send --deliver named a mode; absent
+#                             means followUp (the default, byte-compatible with
+#                             records written before this field existed)
 #   delivery=fire-and-forget   present only when the re-ring ladder must ignore it
 #   --
 #   <exact message text; newlines are legal; a marked secondmate request keeps
@@ -76,6 +79,11 @@ FM_TASK_INBOX_SCHEMA='fm-task-inbox.v1'
 FM_TASK_INBOX_GRACE_DEFAULT=90
 FM_TASK_INBOX_RING_MAX_DEFAULT=3
 FM_TASK_INBOX_LOCK_WAIT_DEFAULT=5
+# A pi crewmate's doorbell extension touches this stamp on every poll while it
+# is alive and injecting the doorbell in-process. fm_task_inbox_ring skips the
+# typed ring when the stamp is this fresh, because the extension owns delivery;
+# a stale (or absent) stamp falls back to the typed-ring + re-ring ladder.
+FM_TASK_INBOX_DOORBELL_FRESH_DEFAULT=30
 
 fm_task_inbox_grace_secs() {
   local g=${FM_TASK_INBOX_GRACE_SECS:-$FM_TASK_INBOX_GRACE_DEFAULT}
@@ -138,14 +146,23 @@ fm_task_inbox_lock_acquire() {  # <lock-path>
 
 # Write one record into the next sequence slot: temp-write, then atomic
 # rename. Prints the record path. Caller must hold .seq.lock.
-_fm_task_inbox_write_record_locked() {  # <inbox-dir> <text> [delivery-mode]
-  local dir=$1 text=$2 delivery_mode=${3:-} seq tmp rec status=0
+_fm_task_inbox_validate_deliver() {  # <mode>
+  case "$1" in
+    ''|steer|followUp) return 0 ;;
+    *) echo "error: invalid deliver mode '$1' (allowed: steer, followUp)" >&2; return 1 ;;
+  esac
+}
+
+_fm_task_inbox_write_record_locked() {  # <inbox-dir> <text> [delivery-mode] [deliver-mode]
+  local dir=$1 text=$2 delivery_mode=${3:-} deliver_mode=${4:-} seq tmp rec status=0
+  _fm_task_inbox_validate_deliver "$deliver_mode" || return 1
   seq=$(fm_task_inbox_next_seq "$dir")
   rec="$dir/$seq.msg"
   tmp=$(mktemp "$dir/.staging.XXXXXX") || return 1
   {
     printf 'schema=%s\n' "$FM_TASK_INBOX_SCHEMA"
     printf 'at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    [ -z "$deliver_mode" ] || printf 'deliver=%s\n' "$deliver_mode"
     [ "$delivery_mode" != fire-and-forget ] || printf 'delivery=fire-and-forget\n'
     printf -- '--\n'
     printf '%s' "$text"
@@ -156,13 +173,13 @@ _fm_task_inbox_write_record_locked() {  # <inbox-dir> <text> [delivery-mode]
 
 # Durably enqueue one steer: temp-write, then atomic rename into the next
 # sequence slot. Prints the record path. Fails without a partial record.
-fm_task_inbox_write() {  # <state-dir> <task-id> <text> [delivery-mode]
-  local state=$1 task=$2 text=$3 delivery_mode=${4:-} dir lock rec status=0
+fm_task_inbox_write() {  # <state-dir> <task-id> <text> [delivery-mode] [deliver-mode]
+  local state=$1 task=$2 text=$3 delivery_mode=${4:-} deliver_mode=${5:-} dir lock rec status=0
   dir=$(fm_task_inbox_dir "$state" "$task")
   mkdir -p "$dir/handled" || return 1
   lock="$dir/.seq.lock"
   fm_task_inbox_lock_acquire "$lock" || return 1
-  rec=$(_fm_task_inbox_write_record_locked "$dir" "$text" "$delivery_mode") || status=1
+  rec=$(_fm_task_inbox_write_record_locked "$dir" "$text" "$delivery_mode" "$deliver_mode") || status=1
   fm_lock_release "$lock"
   [ "$status" -eq 0 ] || return 1
   printf '%s' "$rec"
@@ -179,8 +196,9 @@ fm_task_inbox_write() {  # <state-dir> <task-id> <text> [delivery-mode]
 # secondmate request embeds a per-request correlation token in its body. The
 # local plane keeps plain fm_task_inbox_write: its outcome is synchronous, so
 # a repeated identical local steer is a deliberate new instruction.
-fm_task_inbox_write_idempotent() {  # <state-dir> <task-id> <text> [delivery-mode]
-  local state=$1 task=$2 text=$3 delivery_mode=${4:-} dir lock want have f rec='' status=0
+fm_task_inbox_write_idempotent() {  # <state-dir> <task-id> <text> [delivery-mode] [deliver-mode]
+  local state=$1 task=$2 text=$3 delivery_mode=${4:-} deliver_mode=${5:-} dir lock want have f rec='' status=0
+  _fm_task_inbox_validate_deliver "$deliver_mode" || return 1
   dir=$(fm_task_inbox_dir "$state" "$task")
   mkdir -p "$dir/handled" || return 1
   lock="$dir/.seq.lock"
@@ -225,7 +243,7 @@ fm_task_inbox_write_idempotent() {  # <state-dir> <task-id> <text> [delivery-mod
     status=1
   fi
   if [ "$status" -eq 0 ] && [ -z "$rec" ]; then
-    rec=$(_fm_task_inbox_write_record_locked "$dir" "$text" "$delivery_mode") || status=1
+    rec=$(_fm_task_inbox_write_record_locked "$dir" "$text" "$delivery_mode" "$deliver_mode") || status=1
   fi
   fm_lock_release "$lock"
   [ "$status" -eq 0 ] || return 1
@@ -267,7 +285,22 @@ fm_task_inbox_doorbell_line() {  # <record-path>
 # verdicts would starve a harness whose idle screen the classifier cannot
 # positively identify (that classifier is advisory here by design).
 fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
-  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict
+  local backend=$1 target=$2 rec=$3 label=${4:-} line cstate verdict hb age fresh
+  # In-process doorbell liveness: a pi crewmate's doorbell extension touches
+  # <inbox>/.doorbell-heartbeat on every poll while it is alive and injecting the
+  # doorbell via pi.sendUserMessage. When that stamp is fresh the typed ring is
+  # skipped (the extension owns delivery); the re-ring ladder still advances via
+  # fm_task_inbox_record_ring, so an unacked record still escalates on schedule.
+  # A stale or absent stamp falls through to the typed ring exactly as before.
+  hb=$(fm_task_inbox_doorbell_heartbeat_path "$rec")
+  if [ -f "$hb" ]; then
+    age=$(fm_path_age "$hb" 2>/dev/null) || age=
+    fresh=$(fm_task_inbox_doorbell_fresh_secs)
+    case "$age" in
+      ''|*[!0-9]*) ;;
+      *) [ "$age" -gt "$fresh" ] || return 0 ;;
+    esac
+  fi
   line=$(fm_task_inbox_doorbell_line "$rec")
   cstate=$(fm_backend_composer_state "$backend" "$target" "$label" 2>/dev/null) || cstate=unknown
   case "$cstate" in
@@ -280,6 +313,29 @@ fm_task_inbox_ring() {  # <backend> <target> <record-path> [expected-label]
   # (empty, pending, unknown, ...) is deliberately ignored, never proof.
   [ "$verdict" != send-failed ] || return 2
   return 0
+}
+
+fm_task_inbox_doorbell_heartbeat_path() {  # <record-path>
+  printf '%s/.doorbell-heartbeat' "${1%/*}"
+}
+
+fm_task_inbox_doorbell_fresh_secs() {
+  local s=${FM_TASK_INBOX_DOORBELL_FRESH_SECS:-$FM_TASK_INBOX_DOORBELL_FRESH_DEFAULT}
+  case "$s" in ''|*[!0-9]*) s=$FM_TASK_INBOX_DOORBELL_FRESH_DEFAULT ;; esac
+  printf '%s' "$s"
+}
+
+# The deliver= header of a record, or empty when absent (default followUp).
+fm_task_inbox_deliver_mode() {  # <record-path>
+  local rec=$1
+  if [ ! -f "$rec" ]; then
+    rec="${rec%/*}/handled/${rec##*/}"
+    [ -f "$rec" ] || return 1
+  fi
+  awk '
+    $0 == "--" { exit }
+    $0 ~ /^deliver=/ { sub(/^deliver=/, "", $0); print; exit }
+  ' "$rec"
 }
 
 fm_task_inbox_is_fire_and_forget() {  # <record-path>

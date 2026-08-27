@@ -511,3 +511,59 @@ test_watcher_quiet_on_healthy_inbox
 test_watcher_ack_silences_unwritable_ladder
 test_watcher_surfaces_unwritable_ladder
 test_watcher_escalates_once_after_budget
+
+test_deliver_header_recorded_and_read() {
+  local state rec mode
+  state="$TMP_ROOT/deliver/state"; mkdir -p "$state"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "do X" "" steer)
+  mode=$(inbox_lib "$state" fm_task_inbox_deliver_mode "$rec")
+  [ "$mode" = steer ] || fail "deliver=steer not read back: '$mode'"
+  grep -qF 'deliver=steer' "$rec" || fail "record missing deliver=steer header"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "do Y" "" followUp)
+  mode=$(inbox_lib "$state" fm_task_inbox_deliver_mode "$rec")
+  [ "$mode" = followUp ] || fail "deliver=followUp not read back: '$mode'"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "do Z")
+  mode=$(inbox_lib "$state" fm_task_inbox_deliver_mode "$rec")
+  [ "$mode" = "" ] || fail "absent deliver should read empty (default followUp), got '$mode'"
+  grep -qF 'deliver=' "$rec" && fail "a default record should not carry a deliver= header"
+  pass "inbox: deliver= header recorded and read; absent defaults to empty"
+}
+
+test_deliver_invalid_mode_rejected() {
+  local state rc
+  state="$TMP_ROOT/deliver-bad/state"; mkdir -p "$state"
+  rc=0
+  inbox_lib "$state" fm_task_inbox_write "$state" t1 "do X" "" bogus >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || fail "invalid deliver mode 'bogus' should be rejected"
+  pass "inbox: an invalid deliver mode is rejected"
+}
+
+test_ring_skipped_when_doorbell_heartbeat_fresh() {
+  local dir state fakebin rec hb marker calls
+  dir="$TMP_ROOT/doorbell-fresh"; state="$dir/state"; fakebin="$dir/fakebin"
+  mkdir -p "$state" "$fakebin"
+  marker="$dir/tmux-calls.log"
+  printf '#!/usr/bin/env bash\nset -u\necho "$*" >> "%s"\nexit 0\n' "$marker" > "$fakebin/tmux"
+  chmod +x "$fakebin/tmux"
+  rec=$(inbox_lib "$state" fm_task_inbox_write "$state" t1 "do X")
+  hb="$state/t1.inbox/.doorbell-heartbeat"
+  : > "$marker"
+  PATH="$fakebin:$PATH" inbox_lib "$state" fm_task_inbox_ring tmux "sess:fm-t1" "$rec" "fm-t1" >/dev/null 2>&1 || true
+  calls=$(wc -l < "$marker" | tr -d ' ')
+  [ "$calls" -ge 1 ] || fail "absent heartbeat should still reach the typed ring (tmux not invoked)"
+  printf '%s\n' "$(date +%s)" > "$hb"
+  : > "$marker"
+  PATH="$fakebin:$PATH" inbox_lib "$state" fm_task_inbox_ring tmux "sess:fm-t1" "$rec" "fm-t1" >/dev/null 2>&1 || true
+  calls=$(wc -l < "$marker" | tr -d ' ')
+  [ "$calls" = 0 ] || fail "a fresh doorbell heartbeat should skip the typed ring, but tmux was invoked ($calls calls)"
+  touch -t 197001010000 "$hb" 2>/dev/null || true
+  : > "$marker"
+  PATH="$fakebin:$PATH" inbox_lib "$state" fm_task_inbox_ring tmux "sess:fm-t1" "$rec" "fm-t1" >/dev/null 2>&1 || true
+  calls=$(wc -l < "$marker" | tr -d ' ')
+  [ "$calls" -ge 1 ] || fail "a stale heartbeat should fall back to the typed ring"
+  pass "inbox: fm_task_inbox_ring skips the typed ring while the doorbell heartbeat is fresh"
+}
+
+test_deliver_header_recorded_and_read
+test_deliver_invalid_mode_rejected
+test_ring_skipped_when_doorbell_heartbeat_fresh

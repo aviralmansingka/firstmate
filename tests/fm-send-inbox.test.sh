@@ -114,6 +114,43 @@ record_body() {  # <record>
   bash -c '. "$1"; fm_task_inbox_body "$2"' _ "$ROOT/bin/fm-task-inbox-lib.sh" "$2"
 }
 
+record_deliver() {  # <record>
+  bash -c '. "$1"; fm_task_inbox_deliver_mode "$2"' _ "$ROOT/bin/fm-task-inbox-lib.sh" "$2"
+}
+
+test_deliver_steer_recorded_in_header() {
+  local dir err rc rec mode
+  dir=$(setup_case deliver-steer); err="$dir/send.err"
+  run_send "$dir" "$err" -- t1 --deliver steer "do X"; rc=$?
+  expect_code 0 "$rc" "--deliver steer should enqueue exit 0"
+  rec="$dir/home/state/t1.inbox/001.msg"
+  [ -f "$rec" ] || fail "steer not recorded"
+  mode=$(record_deliver _ "$rec")
+  [ "$mode" = steer ] || fail "record deliver= header is '$mode', expected steer"
+  pass "fm-send: --deliver steer records deliver=steer in the inbox header"
+}
+
+test_deliver_default_is_followUp() {
+  local dir err rc rec mode
+  dir=$(setup_case deliver-default); err="$dir/send.err"
+  run_send "$dir" "$err" -- t1 "do X"; rc=$?
+  expect_code 0 "$rc" "default steer should enqueue exit 0"
+  rec="$dir/home/state/t1.inbox/001.msg"
+  mode=$(record_deliver _ "$rec")
+  [ "$mode" = followUp ] || fail "default deliver= header is '$mode', expected followUp"
+  pass "fm-send: default --deliver is followUp, recorded in the header"
+}
+
+test_deliver_invalid_mode_rejected() {
+  local dir err rc
+  dir=$(setup_case deliver-bad); err="$dir/send.err"
+  run_send "$dir" "$err" -- t1 --deliver bogus "do X"; rc=$?
+  [ "$rc" -ne 0 ] || fail "--deliver bogus should be rejected with nonzero exit"
+  assert_contains "$(cat "$err")" "steer or followUp" \
+    "--deliver bogus should name the allowed modes"
+  pass "fm-send: an invalid --deliver mode is rejected"
+}
+
 test_text_steer_rides_inbox() {
   local dir err rc rec body typed
   dir=$(setup_case rides); err="$dir/send.err"
@@ -350,3 +387,7 @@ test_secondmate_marker_and_enqueue_delivery
 test_post_enqueue_bookkeeping_failure_is_not_retryable
 test_meta_lock_contention_fails_bounded
 test_unwritable_inbox_fails_loudly
+
+test_deliver_steer_recorded_in_header
+test_deliver_default_is_followUp
+test_deliver_invalid_mode_rejected
