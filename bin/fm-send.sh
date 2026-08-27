@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Steer a task by durable record: write the message into the task's steering
 # inbox and ring a constant doorbell line into its terminal, best-effort.
-# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] <text...>
+# Usage: fm-send.sh <target> [--resolve-key <key>]... [--fire-and-forget <delivery-id>] [--deliver steer|followUp] <text...>
 #   <target> may be an exact task id, a legacy fm-<id> task label resolved
 #   through this home's state/<id>.meta, or an explicit well-formed backend
 #   target. fm-send refuses unresolved guesses rather than falling back to a
@@ -51,6 +51,15 @@
 # the composer visibly holds pending text the ring is skipped with a notice and
 # the watcher re-rings an ordinary record later; no composer verdict is
 # delivery proof on this plane, and a failed ring never fails the send.
+#
+# --deliver steer|followUp (default followUp) records the delivery timing the
+# crewmate's doorbell extension should use when it is alive: steer = inject at
+# the next turn boundary (mid-work correction); followUp = inject when the agent
+# fully stops (today's inbox semantics). The durable record carries a deliver=
+# header so the extension picks the right lane; a non-pi harness or an extension
+# absent or heartbeat-stale falls back to the typed-ring + re-ring ladder exactly
+# as before, and --deliver steer degrades to followUp-equivalent there. The
+# typed plane ignores --deliver (it types the literal text itself).
 #
 # TYPED - the LOCAL text that must reach the terminal itself: a harness-native
 # invocation (a leading "/", or a leading "$" to a codex target) must reach
@@ -430,6 +439,7 @@ fi
 # message exactly as before, so ordinary sends are byte-identical.
 RESOLVE_KEYS=
 FIRE_AND_FORGET_ID=
+DELIVER_MODE=followUp
 fm_send_add_resolve_key() {  # <key>
   local k=$1
   case "$k" in
@@ -466,6 +476,21 @@ while :; do
     --fire-and-forget=*)
       [ -z "$FIRE_AND_FORGET_ID" ] || { echo "error: duplicate --fire-and-forget" >&2; exit 1; }
       FIRE_AND_FORGET_ID=${1#--fire-and-forget=}
+      shift
+      ;;
+    --deliver)
+      [ $# -ge 2 ] || { echo "error: --deliver requires a mode (steer or followUp)" >&2; exit 1; }
+      case "$2" in
+        steer|followUp) DELIVER_MODE=$2 ;;
+        *) echo "error: --deliver '$2' is not steer or followUp" >&2; exit 1 ;;
+      esac
+      shift 2
+      ;;
+    --deliver=*)
+      case "${1#--deliver=}" in
+        steer|followUp) DELIVER_MODE=${1#--deliver=} ;;
+        *) echo "error: --deliver '${1#--deliver=}' is not steer or followUp" >&2; exit 1 ;;
+      esac
       shift
       ;;
     *) break ;;
@@ -867,10 +892,10 @@ else
     fi
     if [ "${FM_SEND_IDEMPOTENT:-0}" = 1 ]; then
       INBOX_RECORD=$(fm_task_inbox_write_idempotent "$STATE" "$INBOX_TASK_ID" "$MESSAGE" \
-        "${FIRE_AND_FORGET_ID:+fire-and-forget}") || inbox_write_rc=$?
+        "${FIRE_AND_FORGET_ID:+fire-and-forget}" "$DELIVER_MODE") || inbox_write_rc=$?
     else
       INBOX_RECORD=$(fm_task_inbox_write "$STATE" "$INBOX_TASK_ID" "$MESSAGE" \
-        "${FIRE_AND_FORGET_ID:+fire-and-forget}") || inbox_write_rc=$?
+        "${FIRE_AND_FORGET_ID:+fire-and-forget}" "$DELIVER_MODE") || inbox_write_rc=$?
     fi
     if [ "${inbox_write_rc:-0}" -ne 0 ]; then
       fm_lock_release "$INBOX_META_LOCK"
