@@ -410,6 +410,8 @@ A declared `paused:` event means a bounded external wait expected to clear on it
 
 Handle actionable wakes as follows:
 
+Crewmate-originated wakes (signal:/stale:/check: naming a live ship or scout task) are delegated to a spawned sub-agent, not handled inline, so the captain-facing main pane stays free for captain input; load `crewmate-wake-delegation` before handling any such wake. Fleet-wide and captain-originated wakes are still handled inline per the ladder below.
+
 1. For `signal:`, read the listed event lines first, then reconcile current state only where action depends on it.
 2. For `stale:`, inspect the recorded endpoint and load `stuck-crewmate-recovery` for a stopped, looping, confused, or unresponsive worker; a deep-inspection reason also requires current-state and validation-log inspection.
 3. For `check:`, act on the named poll result, including merges, Relay events, process-to-event source results, and captain inbox notes; a handled inbox note is also acknowledged with `bin/fm-inbox.sh drain --ack <id>`, or it stays counted as still waiting for firstmate.
@@ -552,6 +554,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `fmx-respond` - load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the Relay configuration blocker, on a `public-followup ...` `check:` wake or a startup-surfaced public commitment, and on any milestone or terminal wake for a Relay-linked task before posting its completion follow-up; relevant only when Relay is on.
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for Firstmate work.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
+- `crewmate-wake-delegation` - load at every actionable wake whose source is a crewmate or scout direct report (signal:/stale:/check: naming a live ship or scout task), before handling it inline, so the main conversation stays free for captain input.
 
 ## 14. Relay
 
