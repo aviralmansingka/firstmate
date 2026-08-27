@@ -319,7 +319,13 @@ test_faster_paths_use_configured_authority_without_stacked_review() {
   pass "fm-brief.sh: faster paths use configured authority without stacked review"
 }
 
-# The ship brief scaffold owns the fork-PR rule; both PR-opening paths render it and local-only does not.
+# Pin the specific line the bug lived on: the no-mistakes DOD's no-mistakes
+# reference must render as plain prose with no dangling apostrophe artifact.
+# The captain's standing fork-PR rule (2026-08-27): for a project whose upstream
+# the captain does not own, workers push and PR against the captain's fork, never
+# the upstream repo. The ship brief scaffold owns the full rule, so both PR-opening
+# delivery paths (no-mistakes and direct-PR) must render it; local-only ships no PR
+# and must not.
 test_fork_pr_rule_in_pr_opening_dods() {
   local home id mode brief
   home="$TMP_ROOT/fork-pr-rule-home"
@@ -342,8 +348,6 @@ test_fork_pr_rule_in_pr_opening_dods() {
   pass "fm-brief.sh: fork-PR target rule renders in no-mistakes and direct-PR DODs only"
 }
 
-# Pin the specific line the bug lived on: the no-mistakes DOD's no-mistakes
-# reference must render as plain prose with no dangling apostrophe artifact.
 test_no_mistakes_dod_wording() {
   local home id brief
   home="$TMP_ROOT/wording-home"
