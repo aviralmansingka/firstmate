@@ -566,7 +566,7 @@ if (mainUserMessages.length !== 0) throw new Error("accepted wake leaked to main
 // generator-produced system prompt, no project resources, and the branch bash
 // carries the deterministic actor identity.
 const session = globalThis.__fmSessions[0];
-if (JSON.stringify(session.options.tools) !== JSON.stringify(["read", "bash", "fm_branch_report"])) {
+if (JSON.stringify(session.options.tools) !== JSON.stringify(["read", "bash", "fm_branch_report", "fm_fleet_poll"])) {
   throw new Error(`unexpected tool order: ${JSON.stringify(session.options.tools)}`);
 }
 const loader = globalThis.__fmLoaders[0];

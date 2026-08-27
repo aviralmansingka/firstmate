@@ -197,17 +197,27 @@ stdin_tiers=$(printf '%s' "$stdin_out" | jq -r '[.ranked[].tier] | join(",")')
 [ "$stdin_tiers" = "$expected" ] || fail "stdin tier order is $stdin_tiers, expected $expected"
 pass "--snapshot - reads from stdin and produces same ranking"
 
-# --- Test 10: --peek is not a recognized flag in Phase 1 ---------------------
-# Behavioral proof (not a source grep): --peek must be rejected as unknown in
-# Phase 1, so an armed musing read cannot happen by accident.
+# --- Test 10: --peek is accepted in Phase 5 and emits tier-6 only when armed ---
+# Behavioral proof: --peek is now a recognized flag (Phase 5). Unarmed polls
+# emit zero tier-6 rows (the privacy proof); armed polls with no running
+# sub-agents still emit zero tier-6 rows but set peek_armed=true.
 peek_rc=0
 run_poll "$home" --peek --json >/tmp/fm-poll-peek.out 2>/tmp/fm-poll-peek.err || peek_rc=$?
-[ "$peek_rc" -ne 0 ] || fail "--peek was accepted in Phase 1 (rc=$peek_rc)"
-# A rejected unknown flag prints usage to stderr and exits 2.
-[ "$peek_rc" -eq 2 ] || fail "--peek exit code is $peek_rc, expected 2 (usage)"
-grep -qi 'usage' /tmp/fm-poll-peek.err || fail "--peek did not print usage to stderr"
+[ "$peek_rc" -eq 0 ] || fail "--peek should be accepted in Phase 5, got rc=$peek_rc"
+peek_armed=$(jq -r '.peek_armed' /tmp/fm-poll-peek.out)
+[ "$peek_armed" = true ] || fail "--peek should set peek_armed=true, got $peek_armed"
+tier6=$(jq '[.ranked[]|select(.tier==6)]|length' /tmp/fm-poll-peek.out)
+[ "$tier6" = 0 ] || fail "armed poll with no running sub-agents should emit 0 tier-6 rows, got $tier6"
 rm -f /tmp/fm-poll-peek.out /tmp/fm-poll-peek.err
-pass "--peek rejected as unknown flag in Phase 1"
+pass "--peek accepted in Phase 5; peek_armed=true; zero tier-6 without running sub-agents"
+
+# --- Test 10b: unarmed poll emits zero tier-6 rows (privacy proof) ----------
+unarmed_out=$(run_poll "$home" --json)
+unarmed_armed=$(printf '%s' "$unarmed_out" | jq -r '.peek_armed')
+[ "$unarmed_armed" = false ] || fail "unarmed poll should set peek_armed=false, got $unarmed_armed"
+unarmed_tier6=$(printf '%s' "$unarmed_out" | jq '[.ranked[]|select(.tier==6)]|length')
+[ "$unarmed_tier6" = 0 ] || fail "unarmed poll should emit 0 tier-6 rows, got $unarmed_tier6"
+pass "unarmed poll emits zero tier-6 rows (privacy proof)"
 
 # --- Test 11: human mode prints digest and rows ------------------------------
 human_out=$(run_poll "$home") || fail "poll (human mode) failed"
