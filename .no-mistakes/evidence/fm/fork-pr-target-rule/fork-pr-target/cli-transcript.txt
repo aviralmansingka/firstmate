@@ -1,0 +1,9 @@
+$ FM_HOME=/tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/home bin/fm-brief.sh evidence-no-mistakes third-party-project --mode no-mistakes
+scaffolded: /tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/home/data/evidence-no-mistakes/brief.md (ship, mode=no-mistakes; replace {TASK})
+
+$ FM_HOME=/tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/home bin/fm-brief.sh evidence-direct-PR third-party-project --mode direct-PR
+scaffolded: /tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/home/data/evidence-direct-PR/brief.md (ship, mode=direct-PR; replace {TASK})
+
+$ FM_HOME=/tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/home bin/fm-brief.sh evidence-local-only third-party-project --mode local-only
+scaffolded: /tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/home/data/evidence-local-only/brief.md (ship, mode=local-only; replace {TASK})
+

@@ -1,0 +1,19 @@
+--- base/no-mistakes-definition-of-done
++++ current/no-mistakes-definition-of-done
+@@ -1,6 +1,7 @@
+ # Definition of done
+ Delivery contract: mode=no-mistakes
+ The task is complete only when committed on your branch.
++When the project's upstream is third-party (the captain does not own it), the branch and PR target the captain's fork, never the upstream repo; the configured merge authority is unchanged.
+ When you believe it is complete, append `done: {summary}` to the status file and stop.
+ Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
+ 
+--- base/direct-PR-definition-of-done
++++ current/direct-PR-definition-of-done
+@@ -2,5 +2,6 @@
+ Delivery contract: mode=direct-PR
+ This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+ The task is complete only when committed on your branch.
++When the project's upstream is third-party (the captain does not own it), push your branch and open the PR against the captain's fork, never the upstream repo; the configured merge authority is unchanged.
+ When it is implemented and committed, push your branch and open a PR with `gh-axi`, then append `done: PR {url}` to the status file and stop.
+ Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.

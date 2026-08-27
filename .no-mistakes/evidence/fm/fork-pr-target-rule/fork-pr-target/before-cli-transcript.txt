@@ -1,0 +1,6 @@
+$ FM_HOME=/tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/before/home before/bin/fm-brief.sh before-no-mistakes third-party-project --mode no-mistakes
+scaffolded: /tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/before/home/data/before-no-mistakes/brief.md (ship, mode=no-mistakes; replace {TASK})
+
+$ FM_HOME=/tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/before/home before/bin/fm-brief.sh before-direct-PR third-party-project --mode direct-PR
+scaffolded: /tmp/no-mistakes-evidence/01M10ASYYFF5D2CCZN0MDRWY6A/fork-pr-target/before/home/data/before-direct-PR/brief.md (ship, mode=direct-PR; replace {TASK})
+
