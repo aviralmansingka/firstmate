@@ -807,7 +807,10 @@ test_no_run_busy_pane() {
 
 # A converted adapter must NOT read working from rendered footer text: the
 # redesign removed that dependency, so a pane painting "esc to interrupt" with
-# no semantic record is unknown, never working and never silently idle.
+# no semantic record: footer text alone must not read working. An unknown busy
+# verdict now falls through to the status-log fallback (same as idle), so an
+# explicit done: or paused: declaration is honored when the pane is merely
+# unreadable for busy state.
 test_no_run_footer_text_alone_is_not_working() {
   reset_fakes
   local d; d=$(new_case busy-footer-only)
@@ -820,8 +823,8 @@ test_no_run_footer_text_alone_is_not_working() {
   printf 'done: stale completion event\n' > "$d/state/feat-h2.status"
   local out; out=$(run_crew_state "$d" feat-h2)
   assert_not_contains "$out" "state: working" "a footer alone must not read working for a converted adapter"
-  assert_contains "$out" "state: unknown" "no semantic record -> unknown"
-  assert_not_contains "$out" "source: status-log" "unknown semantic state must not fall through to a stale log"
+  assert_contains "$out" "state: done" "no semantic record falls through to the status-log verb"
+  assert_contains "$out" "source: status-log" "unknown busy verdict now falls through to the status log"
   pass "a converted adapter never reads working from rendered footer text"
 }
 

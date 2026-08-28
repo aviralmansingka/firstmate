@@ -207,8 +207,11 @@ BUSY_TURN_MAX_SECS=${FM_BUSY_TURN_MAX_SECS:-3600}
 SECONDMATE_WAKE_STALL_SECS=${FM_SECONDMATE_WAKE_STALL_SECS:-60}
 # A crew that declared a pause is idling on a known external wait, so its stale
 # pane is absorbed rather than wedge-escalated.
-# A captain-held or paused crew whose agent has confidently exited uses the same
-# bounded cadence, while a live or ambiguously read agent still surfaces once; a
+# A confirmed pause (fm-crew-state reports paused) is absorbed immediately on
+# first sight, because a live agent is expected during a declared pause. A
+# captain-held or paused crew whose authoritative state could not name the pause
+# (class=none) still surfaces once when its agent is live or ambiguously read, so
+# a possibly-relevant decision gate is not hidden behind the pause cadence; a
 # secondmate earns the cadence on its declaration alone, because its endpoint
 # liveness is deliberately never read (pause_state_class owns that split).
 # These cases re-surface once for a recheck every PAUSE_RESURFACE_SECS - far
@@ -663,9 +666,13 @@ clear_pause_tracking() {  # <window-key>
 }
 
 # Reconcile a declared pause or captain-held status with authoritative crew state.
-# After fm-crew-state has fallen back to stopped or unknown, paused classification is
-# recovered only for a confidently dead ordinary crew, or for a secondmate, whose
-# endpoint liveness this function deliberately never reads.
+# When fm-crew-state authoritatively confirms a pause (class=paused), the crew is
+# genuinely paused and agent liveness is not consulted: a live agent is the expected
+# state during a declared pause, not evidence against it. The agent-alive gate is
+# only the fallback for the class=none recovery case, where authoritative crew state
+# could not name the pause and a live agent may still need firstmate's attention.
+# A secondmate earns the cadence on its declaration alone, because its endpoint
+# liveness this function deliberately never reads.
 pause_state_class() {  # <window> <task>
   local win=$1 task=$2 key last recheck_file class agent_alive kind
   key=$(window_key "$win")
@@ -696,6 +703,16 @@ pause_state_class() {  # <window> <task>
   if [ "$class" = working ]; then
     rm -f "$recheck_file"
     printf 'working'
+    return
+  fi
+  if [ "$class" = paused ]; then
+    # fm-crew-state.sh authoritatively confirmed the declared pause: no active
+    # run, idle pane, status log says paused:. A live agent is expected during a
+    # pause (the process is alive, just waiting), so agent liveness does not
+    # contradict the declaration. The gate below is only for the recovery case
+    # where authoritative crew state could not name the pause (class=none).
+    date +%s > "$recheck_file"
+    printf 'paused'
     return
   fi
   if [ "$kind" != secondmate ]; then
