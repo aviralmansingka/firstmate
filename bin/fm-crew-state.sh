@@ -590,15 +590,16 @@ pane_readable "$BACKEND_TARGET" || emit unknown none "backend target gone: $BACK
 
 # Secondmates idle on their own watcher (idle pane = healthy), so the busy
 # state is not meaningful for them; read their state from the status log only.
-# Only an exact busy verdict reports working here, and only an exact idle
-# verdict permits the status-log fallback below. Missing, malformed, stale, or
-# unverified semantic state remains unknown.
+# An exact busy verdict reports working here. An exact idle verdict or an unknown
+# verdict both fall through to the status-log fallback below, so an explicit
+# paused: declaration is honored when the pane is merely unreadable for busy
+# state (e.g. herdr's native idle is not trusted as a turn-state signal).
 if [ "$KIND" != secondmate ]; then
   BUSY_VERDICT=$(crew_busy_verdict "$BACKEND_TARGET")
   case "${BUSY_VERDICT%% *}" in
     busy) emit working pane "harness busy (${BUSY_VERDICT#* })" ;;
     idle) ;;
-    *) emit unknown pane "harness state unavailable ($BUSY_VERDICT)" ;;
+    *) ;;  # unknown: fall through to status-log fallback below
   esac
 fi
 
