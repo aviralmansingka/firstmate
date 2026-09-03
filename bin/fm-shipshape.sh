@@ -66,6 +66,10 @@ ff_repo() {
     printf 'skipped: %s (fetch failed)\n' "$dir"
     return 0
   fi
+  if [ -n "$(git -C "$dir" status --porcelain 2>/dev/null | head -1)" ]; then
+    printf 'skipped: %s (dirty working tree)\n' "$dir"
+    return 0
+  fi
   before=$(git -C "$dir" rev-parse --short HEAD)
   if git -C "$dir" merge --ff-only origin/main >/dev/null 2>&1; then
     after=$(git -C "$dir" rev-parse --short HEAD)
@@ -75,7 +79,7 @@ ff_repo() {
       printf 'updated: %s %s..%s\n' "$dir" "$before" "$after"
     fi
   else
-    printf 'skipped: %s (dirty or diverged - not a clean fast-forward)\n' "$dir"
+    printf 'skipped: %s (diverged - not a clean fast-forward)\n' "$dir"
   fi
 }
 
