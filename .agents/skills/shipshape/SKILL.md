@@ -40,8 +40,8 @@ and reported, never disrupted. Nothing with unlanded work is ever discarded
      `$HOME/vault`; override with `FM_SHIPSHAPE_REPOS="dir1:dir2"` or pass dirs as
      args) to `origin/main`. One status line per repo (`updated <old>..<new>` /
      `already current` / `skipped: <reason>`).
-   - **dotfiles symlinks**: only when dotfiles landed on main (`HEAD == origin/main`
-     on the `main` branch), reports broken symlinks pointing into the dotfiles
+   - **dotfiles symlinks**: only when Leg 1 advanced dotfiles to a clean main
+     (updated or already current), reports broken symlinks pointing into the dotfiles
      repo (scanning the known stow-target dirs: `$HOME` top-level, `.config`,
      `.pi`, `.agents`, `.herdr`, `.tmux`, `.claude`, `.gnupg`), then re-stows each
      canonical stow package with `stow -R -t $HOME <pkg>` so every symlink

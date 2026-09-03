@@ -9,8 +9,8 @@
 # off-main, or offline is skipped and reported, never disrupted. Nothing with
 # unlanded work is ever discarded (prime directive #3).
 #
-# Leg 2 - dotfiles symlinks: only when dotfiles landed on main (HEAD == origin/main
-# on the main branch), report broken symlinks pointing into the dotfiles repo, then
+# Leg 2 - dotfiles symlinks: only when Leg 1 advanced dotfiles to a clean main
+# (updated or already current), report broken symlinks pointing into the dotfiles repo, then
 # re-stow each canonical stow package with `stow -R` so every symlink re-points at
 # the latest main. The canonical package list is cross-referenced to install.sh
 # (the single owner); restowing a non-stow package would wrongly deploy it into
@@ -49,6 +49,7 @@ fi
 
 ff_repo() {
   local dir="$1" branch before after
+  FF_REPO_STATUS="skipped"
   if [ ! -d "$dir" ]; then
     printf 'skipped: %s (not found)\n' "$dir"
     return 0
@@ -74,8 +75,10 @@ ff_repo() {
   if git -C "$dir" merge --ff-only origin/main >/dev/null 2>&1; then
     after=$(git -C "$dir" rev-parse --short HEAD)
     if [ "$before" = "$after" ]; then
+      FF_REPO_STATUS="current"
       printf 'already current: %s (%s)\n' "$dir" "$after"
     else
+      FF_REPO_STATUS="updated"
       printf 'updated: %s %s..%s\n' "$dir" "$before" "$after"
     fi
   else
@@ -123,30 +126,30 @@ restow_dotfiles() {
   popd >/dev/null
 }
 
-printf '== shipshape: live repos ==\n'
-for d in "${targets[@]}"; do
-  ff_repo "$d"
-done
-
-# Leg 2: re-stow dotfiles symlinks only when dotfiles reached main.
+# Detect the dotfiles target so Leg 2 can gate on Leg 1's verdict for it.
 dotfiles_dir=""
 for d in "${targets[@]}"; do
   if [ -d "$d" ] && [ "$(basename "$d")" = "dotfiles" ]; then
     dotfiles_dir="$d"
   fi
 done
-printf '\n== shipshape: dotfiles symlinks ==\n'
-if [ -n "$dotfiles_dir" ] && { [ -d "$dotfiles_dir/.git" ] || [ -f "$dotfiles_dir/.git" ]; }; then
-  branch=$(git -C "$dotfiles_dir" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
-  head=$(git -C "$dotfiles_dir" rev-parse HEAD 2>/dev/null || true)
-  origin=$(git -C "$dotfiles_dir" rev-parse origin/main 2>/dev/null || true)
-  if [ "$branch" = "main" ] && [ -n "$head" ] && [ "$head" = "$origin" ]; then
-    restow_dotfiles "$dotfiles_dir"
-  else
-    printf 'symlinks: skipped (dotfiles not on main at origin/main - symlinks left as-is)\n'
+
+printf '== shipshape: live repos ==\n'
+dotfiles_ff_status="skipped"
+for d in "${targets[@]}"; do
+  ff_repo "$d"
+  if [ -n "$dotfiles_dir" ] && [ "$d" = "$dotfiles_dir" ]; then
+    dotfiles_ff_status="$FF_REPO_STATUS"
   fi
-else
+done
+
+printf '\n== shipshape: dotfiles symlinks ==\n'
+if [ -z "$dotfiles_dir" ]; then
   printf 'symlinks: skipped (no dotfiles repo in targets)\n'
+elif [ "$dotfiles_ff_status" = "updated" ] || [ "$dotfiles_ff_status" = "current" ]; then
+  restow_dotfiles "$dotfiles_dir"
+else
+  printf 'symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)\n'
 fi
 
 printf '\n== shipshape: firstmate + secondmates ==\n'
