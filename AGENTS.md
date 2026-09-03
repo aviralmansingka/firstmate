@@ -531,6 +531,8 @@ Firstmate's shared instruction surface reaches running homes only after it lands
 Only `AGENTS.md`, `bin/`, and `.agents/skills/` are loaded by a running firstmate; public `skills/` is an installer-facing surface.
 When the captain invokes `/updatefirstmate` or asks to update firstmate, load the `/updatefirstmate` skill.
 It performs guarded fast-forward updates of firstmate and registered secondmate homes, refreshes instructions, and never touches anything under `projects/`.
+When the captain invokes `/shipshape` or asks to pull latest on everything, load the `/shipshape` skill.
+It fast-forwards the captain's live repos (dotfiles, vault) to `main`, re-stows the dotfiles symlinks only when dotfiles reached a clean `main`, then runs `/updatefirstmate` for firstmate and secondmates; like `/updatefirstmate`, it never touches anything under `projects/`.
 
 ## 13. Agent-only reference skills
 
