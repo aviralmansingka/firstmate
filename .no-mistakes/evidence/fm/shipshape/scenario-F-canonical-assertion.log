@@ -1,0 +1,5 @@
+--- canonical-only assertion (HOME=/tmp/shipshape.OIPcO3/F/home) ---
+OK  deployed: init.lua -> dotfiles/nvim/init.lua
+OK  deployed: .zshrc -> dotfiles/zsh/.zshrc
+OK  non-canonical 'evilpkg' NOT deployed into HOME
+ASSERTION PASS

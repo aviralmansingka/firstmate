@@ -1,0 +1,13 @@
+===== SCENARIO B =====
+== shipshape: live repos ==
+skipped: /tmp/shipshape.OIPcO3/B/home/dotfiles (dirty working tree)
+already current: /tmp/shipshape.OIPcO3/B/home/vault (d2379b1)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+reread-firstmate: no
+nudge-secondmates: none
+===== END B =====
+

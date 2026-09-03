@@ -1,0 +1,13 @@
+===== SCENARIO D =====
+== shipshape: live repos ==
+skipped: /tmp/shipshape.OIPcO3/D/home/dotfiles (diverged - not a clean fast-forward)
+already current: /tmp/shipshape.OIPcO3/D/home/vault (90d1955)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+reread-firstmate: no
+nudge-secondmates: none
+===== END D =====
+

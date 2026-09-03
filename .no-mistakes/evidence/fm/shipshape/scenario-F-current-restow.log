@@ -1,0 +1,16 @@
+===== SCENARIO F =====
+== shipshape: live repos ==
+already current: /tmp/shipshape.OIPcO3/F/home/dotfiles (207df1d)
+already current: /tmp/shipshape.OIPcO3/F/home/vault (9b0da4f)
+
+== shipshape: dotfiles symlinks ==
+symlinks: no broken dotfiles symlinks detected
+symlinks: re-stowing canonical packages to latest main
+  restowed: zsh
+  restowed: nvim
+
+== shipshape: firstmate + secondmates ==
+reread-firstmate: no
+nudge-secondmates: none
+===== END F =====
+
