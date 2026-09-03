@@ -31,7 +31,7 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 
 # Canonical stow package set. install.sh (in the dotfiles repo) is the single
 # owner of this set; keep this line in sync with install.sh's `stow` commands.
-STOW_PACKAGES="zsh tmux nvim starship ghostty aerospace agents pi herdr git"
+STOW_PACKAGES="zsh tmux nvim starship ghostty aerospace karabiner agents pi herdr git"
 if [ "$(uname -s)" = "Darwin" ]; then
   STOW_PACKAGES="$STOW_PACKAGES launchd"
 fi
