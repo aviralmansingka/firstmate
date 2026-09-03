@@ -1,0 +1,13 @@
+== shipshape: live repos ==
+already current: /tmp/fm-shipshape-tDrTFd/G/home/dotfiles (a193e03)
+
+== shipshape: dotfiles symlinks ==
+symlinks: 1 broken into dotfiles (e.g. /tmp/fm-shipshape-tDrTFd/G/home/.config/nvim/MISSING.lua) - restowing to fix
+symlinks: re-stowing canonical packages to latest main
+  restowed: zsh
+  restowed: nvim
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current
+reread-firstmate: no
+nudge-secondmates: none

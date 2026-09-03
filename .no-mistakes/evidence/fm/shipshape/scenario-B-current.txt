@@ -1,0 +1,13 @@
+== shipshape: live repos ==
+already current: /tmp/fm-shipshape-tDrTFd/B/home/dotfiles (2c7c030)
+
+== shipshape: dotfiles symlinks ==
+symlinks: no broken dotfiles symlinks detected
+symlinks: re-stowing canonical packages to latest main
+  restowed: zsh
+  restowed: nvim
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current
+reread-firstmate: no
+nudge-secondmates: none

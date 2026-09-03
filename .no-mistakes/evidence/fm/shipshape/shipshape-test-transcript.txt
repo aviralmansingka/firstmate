@@ -1,0 +1,150 @@
+shipshape end-to-end behavioral test
+harness sandbox: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9
+script under test: /Users/aviral/.no-mistakes/worktrees/ed00a6ed041c/01M1MAS97A95HKAP29TB0YA5XY/bin/fm-shipshape.sh
+git: git version 2.39.5 (Apple Git-154)  stow: stow (GNU Stow) version 2.4.1  bash: 3.2.57(1)-release
+
+================================================================
+SCENARIO A/H: clean current dotfiles+vault -> restow canonical set; non-stow NOT deployed; broken symlink reported; Leg3 composes
+================================================================
+== shipshape: live repos ==
+already current: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/A/dotfiles (f3d4d0d)
+already current: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/A/vault (c9ef15e)
+
+== shipshape: dotfiles symlinks ==
+symlinks: 1 broken into dotfiles (e.g. /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/home/.config/nvim/old.lua) - restowing to fix
+symlinks: re-stowing canonical packages to latest main
+  restowed: zsh
+  restowed: nvim
+  restowed: karabiner
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: A: dotfiles already current
+ASSERT PASS: A: restowed zsh (canonical)
+ASSERT PASS: A: restowed nvim (canonical)
+ASSERT PASS: A: restowed karabiner (t1 fix)
+ASSERT PASS: A: did NOT restow non-stow 'secret'
+ASSERT PASS: A: $HOME/.zshrc resolves into dotfiles
+ASSERT PASS: A: $HOME/.config/nvim/init.lua resolves into dotfiles
+ASSERT PASS: A: $HOME/.config/karabiner resolves into dotfiles (dir-fold)
+ASSERT PASS: A: non-stow 'secret' NOT deployed into $HOME
+ASSERT PASS: A: broken dotfiles symlink reported
+ASSERT PASS: A: Leg3 fm-update.sh summary (reread-firstmate)
+ASSERT PASS: A: Leg3 fm-update.sh summary (nudge-secondmates)
+
+================================================================
+SCENARIO B: clean dotfiles behind origin/main -> fast-forward updated, then restow (incl. newly-landed tmux)
+================================================================
+== shipshape: live repos ==
+updated: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/B/dotfiles f3d4d0d..54cee49
+already current: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/B/vault (c9ef15e)
+
+== shipshape: dotfiles symlinks ==
+symlinks: no broken dotfiles symlinks detected
+symlinks: re-stowing canonical packages to latest main
+  restowed: zsh
+  restowed: tmux
+  restowed: nvim
+  restowed: karabiner
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: B: dotfiles fast-forwarded (updated a..b)
+ASSERT PASS: B: leg2 restowed after update (nvim)
+ASSERT PASS: B: newly-landed canonical pkg tmux restowed
+ASSERT PASS: B: deployed tmux file resolves into dotfiles
+
+================================================================
+SCENARIO C: dirty dotfiles on main, HEAD==origin -> skipped dirty; leg2 skipped (r1+r2 core)
+================================================================
+== shipshape: live repos ==
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/C/dotfiles (dirty working tree)
+already current: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/C/vault (2975620)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: C: dirty dotfiles skipped with reason
+ASSERT PASS: C: leg2 skipped because dotfiles not clean (r2)
+ASSERT PASS: C: no restow performed on dirty repo
+ASSERT PASS: C: no symlinks deployed into $HOME
+
+================================================================
+SCENARIO D: dotfiles on feature branch -> skipped off-main; leg2 skipped
+================================================================
+== shipshape: live repos ==
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/D/dotfiles (not on main, on feature)
+already current: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/D/vault (4074c3d)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: D: off-main dotfiles skipped with reason
+ASSERT PASS: D: leg2 skipped for off-main dotfiles
+
+================================================================
+SCENARIO E: dotfiles main diverged from origin/main -> skipped diverged; leg2 skipped
+================================================================
+== shipshape: live repos ==
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/E/dotfiles (diverged - not a clean fast-forward)
+already current: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/E/vault (4074c3d)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: E: diverged dotfiles skipped with reason
+ASSERT PASS: E: leg2 skipped for diverged dotfiles
+
+================================================================
+SCENARIO F: dotfiles origin unreachable -> skipped fetch failed; leg2 skipped
+================================================================
+== shipshape: live repos ==
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/F/dotfiles (fetch failed)
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/F/vault (fetch failed)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: F: fetch-failed dotfiles skipped with reason
+ASSERT PASS: F: leg2 skipped for fetch-failed dotfiles
+
+================================================================
+SCENARIO G: dotfiles dir absent -> skipped not found; leg2 'no dotfiles repo in targets'
+================================================================
+== shipshape: live repos ==
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/does-not-exist/dotfiles (not found)
+skipped: /var/folders/dn/m1fcqssd46758319qbfv5j5c0000gn/T/shipshape-test.p12sHOA4l9/does-not-exist/vault (not found)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (no dotfiles repo in targets)
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current (abc1234)
+reread-firstmate: no
+nudge-secondmates: none
+ASSERT PASS: G: missing dotfiles skipped (not found)
+ASSERT PASS: G: leg2 skipped (no dotfiles repo in targets)
+
+================================================================
+RESULT: pass=28 fail=0
+================================================================

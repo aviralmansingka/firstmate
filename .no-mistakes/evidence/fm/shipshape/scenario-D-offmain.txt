@@ -1,0 +1,10 @@
+== shipshape: live repos ==
+skipped: /tmp/fm-shipshape-tDrTFd/D/home/dotfiles (not on main, on feature-x)
+
+== shipshape: dotfiles symlinks ==
+symlinks: skipped (dotfiles did not reach a clean main - symlinks left as-is)
+
+== shipshape: firstmate + secondmates ==
+firstmate: already current
+reread-firstmate: no
+nudge-secondmates: none
