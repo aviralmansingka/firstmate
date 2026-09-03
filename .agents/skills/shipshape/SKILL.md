@@ -83,7 +83,8 @@ and reported, never disrupted. Nothing with unlanded work is ever discarded
   is skipped and reported, never forced or stashed. Nothing with unlanded work is
   ever discarded - prime directive #3.
 - **Re-stow only when dotfiles reached main.**
-  The symlink leg runs only when dotfiles is on `main` and `HEAD == origin/main`,
+  The symlink leg runs only when Leg 1's verdict for dotfiles is `updated` or
+  `current` (on `main`, fetched, clean working tree, and `HEAD == origin/main`),
   so symlinks always track the latest main and never a feature branch or dirty
   state. It re-stows only the canonical stow package set (cross-referenced to
   `install.sh`, the single owner) so a non-stow package is never deployed into
